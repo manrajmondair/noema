@@ -28,6 +28,9 @@ outputs/
 lightning_logs/
 runs/
 
+# Generated demo weights (parity artifact; noema.html inlines its own copy)
+demo/model.json
+
 # OS / editor
 .DS_Store
 .idea/
