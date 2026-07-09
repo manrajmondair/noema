@@ -28,32 +28,38 @@ def latent_prediction_loss(pred, target):
 
 class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
-                 action_dim=0, behavior_dim=0, ema=0.996):
+                 action_dim=0, behavior_dim=0, mask_ratio=0.25, ema=0.996):
         super().__init__()
         self.tokenizer = PopulationTokenizer(dim, max_units)
         self.encoder = TemporalEncoder(dim, enc_depth, heads)
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
         self.behavior = BehaviorHead(dim, behavior_dim) if behavior_dim else None
         self.teacher = copy.deepcopy(self.encoder).requires_grad_(False)
+        self.mask_ratio = mask_ratio
         self.ema = ema
 
     def encode(self, counts, unit_ids):
         return self.encoder(self.tokenizer.encode(counts, unit_ids))
 
-    def forward(self, counts, unit_ids, actions=None, behavior=None, mask=None,
+    def forward(self, counts, unit_ids, actions=None, behavior=None,
                 target_counts=None, target_unit_ids=None):
-        tokens = self.tokenizer.encode(counts, unit_ids)
-        z = self.encoder(tokens)
+        # Coordinated dropout: hide a fraction of spikes and reconstruct only those,
+        # which blocks the trivial copy solution and forces use of population structure.
+        loss_mask, observed = None, counts
+        if self.training and self.mask_ratio > 0:
+            loss_mask = (torch.rand_like(counts) < self.mask_ratio).float()
+            observed = counts * (1 - loss_mask)
 
+        z = self.encode(observed, unit_ids)
         out = {"z": z, "rate": self.tokenizer.decode(z, unit_ids)}
-        out["loss_rate"] = poisson_nll(out["rate"], counts, mask)
+        out["loss_rate"] = poisson_nll(out["rate"], counts, loss_mask)
 
         # Co-smoothing: infer the firing of held-out units the encoder never saw.
         if target_counts is not None:
-            held_out = self.tokenizer.decode(z, target_unit_ids)
-            out["loss_cosmooth"] = poisson_nll(held_out, target_counts)
+            out["loss_cosmooth"] = poisson_nll(self.tokenizer.decode(z, target_unit_ids), target_counts)
 
-        target = self.teacher(tokens)
+        # Forecast the next latent; the target comes from the clean, unmasked view.
+        target = self.teacher(self.tokenizer.encode(counts, unit_ids))
         pred = self.world(z, actions)
         out["loss_jepa"] = latent_prediction_loss(pred[:, :-1], target[:, 1:])
 

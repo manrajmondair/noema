@@ -5,13 +5,14 @@ from torch.utils.data import DataLoader
 from .. import Noema
 from ..data.dataset import SpikeWindows
 from ..data.synthetic import synthetic_batch
+from ..eval.nlb import evaluate
 from .trainer import TrainConfig, train
 
 
-def build_dataset(args):
+def build_dataset(args, split="train"):
     if args.dataset == "nlb":
         from ..data.nlb import load_nlb
-        return load_nlb(args.path, args.name, args.bin_ms, args.window)
+        return load_nlb(args.path, args.name, args.bin_ms, args.window, split=split)
     counts, _, behavior = synthetic_batch(batch=512, steps=40, units=80, behavior_dim=2)
     return SpikeWindows(counts[..., :60], counts[..., 60:], behavior)
 
@@ -33,7 +34,8 @@ def main():
     p.add_argument("--wandb", action="store_true")
     args = p.parse_args()
 
-    ds = build_dataset(args)
+    ds = build_dataset(args, "train")
+    val_ds = build_dataset(args, "val") if args.dataset == "nlb" else ds
     behavior_dim = ds.behavior.size(-1) if ds.behavior is not None else 0
     max_units = ds.in_ids.numel() + ds.out_ids.numel()
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
@@ -52,7 +54,11 @@ def main():
             run.log(losses, step=step)
 
     train(model, loader, TrainConfig(steps=args.steps, lr=args.lr), on_log=log)
+
+    metrics = evaluate(model, val_ds)
+    print("eval " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()), flush=True)
     if run:
+        run.summary.update(metrics)
         run.finish()
 
 
