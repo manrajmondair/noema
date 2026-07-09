@@ -12,9 +12,9 @@ from noema.train import TrainConfig, few_shot_adapt, train
 CPU = torch.device("cpu")
 
 
-def _loader(system, session, batch, steps=30):
+def _loader(system, session, batch, steps=30, label=None):
     c, _, a, b = system.sample(session, batch=batch, steps=steps)
-    ds = SpikeWindows(c, behavior=b, actions=a, unit_ids=system.unit_ids(session))
+    ds = SpikeWindows(c, behavior=b, actions=a, unit_ids=system.unit_ids(session), session=label)
     return ds, DataLoader(ds, batch_size=min(batch, 8), shuffle=True,
                           collate_fn=ds.collate, drop_last=True)
 
@@ -42,23 +42,26 @@ def test_adapt_touches_only_new_units():
     assert moved[[i for i in range(60) if i not in used]].max() == 0       # others untouched
 
 
-def test_adaptation_improves_on_unseen_session():
-    # Calibrating only the new units improves decoding over the un-initialized
-    # backbone. (Absolute cross-session generalization is not robust here — nothing
-    # yet enforces a session-invariant latent; that is the real-data research target.)
+def test_session_invariant_transfer():
+    # Pretraining over enough sessions with an adversarial session-invariance term
+    # yields a latent a held-out population can route into: few-shot calibration then
+    # decodes a session never seen in training. (Verified positive across seeds;
+    # neither more sessions nor the adversary alone is reliable on its own.)
     torch.manual_seed(0)
-    system = MultiSessionSystem(sessions=4, units=30, latent=6, seed=2)
+    pretrain = 6
+    system = MultiSessionSystem(sessions=pretrain + 1, units=30, latent=6, seed=2)
     batches = []
-    for s in (0, 1, 2):
-        ds, loader = _loader(system, s, batch=256, steps=40)
+    for s in range(pretrain):
+        _, loader = _loader(system, s, batch=128, steps=40, label=s)
         batches += list(loader)
-    model = Noema(dim=96, enc_depth=3, wm_depth=2, heads=4, max_units=120,
-                  action_dim=2, behavior_dim=2)
+    model = Noema(dim=96, enc_depth=3, wm_depth=2, heads=4, max_units=30 * (pretrain + 1),
+                  action_dim=2, behavior_dim=2, sessions=pretrain, adv_weight=0.3)
     train(model, batches, TrainConfig(steps=500, warmup=40, lr=3e-3, ckpt=""), device=CPU)
 
-    test_ds, _ = _loader(system, 3, batch=64, steps=40)   # held-out session
-    _, calib = _loader(system, 3, batch=32, steps=40)
+    test_ds, _ = _loader(system, pretrain, batch=64, steps=40)   # unseen session
+    _, calib = _loader(system, pretrain, batch=32, steps=40)
     before = evaluate(copy.deepcopy(model), test_ds, device=CPU)["vel_r2"]
     after = evaluate(few_shot_adapt(copy.deepcopy(model), calib, steps=150, device=CPU),
                      test_ds, device=CPU)["vel_r2"]
-    assert after > before  # routing the new population into the frozen latent helps
+    assert after > 0.2          # decodes a session whose units were never trained on
+    assert after > before + 0.3  # calibration drives it from the cold backbone

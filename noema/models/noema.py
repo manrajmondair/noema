@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from .adversary import SessionAdversary
 from .encoder import TemporalEncoder
 from .heads import BehaviorHead
 from .tokenizer import PopulationTokenizer
@@ -28,12 +29,14 @@ def latent_prediction_loss(pred, target):
 
 class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
-                 action_dim=0, behavior_dim=0, mask_ratio=0.25, ema=0.996):
+                 action_dim=0, behavior_dim=0, sessions=0, mask_ratio=0.25,
+                 adv_weight=1.0, ema=0.996):
         super().__init__()
         self.tokenizer = PopulationTokenizer(dim, max_units)
         self.encoder = TemporalEncoder(dim, enc_depth, heads)
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
         self.behavior = BehaviorHead(dim, behavior_dim) if behavior_dim else None
+        self.adversary = SessionAdversary(dim, sessions, adv_weight) if sessions else None
         self.teacher = copy.deepcopy(self.encoder).requires_grad_(False)
         self.mask_ratio = mask_ratio
         self.ema = ema
@@ -42,7 +45,7 @@ class Noema(nn.Module):
         return self.encoder(self.tokenizer.encode(counts, unit_ids))
 
     def forward(self, counts, unit_ids, actions=None, behavior=None,
-                target_counts=None, target_unit_ids=None):
+                target_counts=None, target_unit_ids=None, session=None):
         # Coordinated dropout: hide a fraction of spikes and reconstruct only those,
         # which blocks the trivial copy solution and forces use of population structure.
         loss_mask, observed = None, counts
@@ -69,6 +72,9 @@ class Noema(nn.Module):
 
         if self.behavior is not None and behavior is not None:
             out["loss_behavior"] = F.mse_loss(self.behavior(z), behavior)
+
+        if self.adversary is not None and session is not None:
+            out["loss_session"] = self.adversary(z, session)
         return out
 
     @torch.no_grad()
