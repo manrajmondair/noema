@@ -63,6 +63,10 @@ class Noema(nn.Module):
         pred = self.world(z, actions)
         out["loss_jepa"] = latent_prediction_loss(pred[:, :-1], target[:, 1:])
 
+        # Anchor the forecast in observation space: the predicted next latent must
+        # decode to the next bin's firing. This is what makes rollouts faithful.
+        out["loss_forecast"] = poisson_nll(self.tokenizer.decode(pred[:, :-1], unit_ids), counts[:, 1:])
+
         if self.behavior is not None and behavior is not None:
             out["loss_behavior"] = F.mse_loss(self.behavior(z), behavior)
         return out

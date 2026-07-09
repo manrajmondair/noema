@@ -20,10 +20,11 @@ def _trialize(x, window):
 
 
 class SpikeWindows(Dataset):
-    def __init__(self, heldin, heldout=None, behavior=None, window=None):
+    def __init__(self, heldin, heldout=None, behavior=None, actions=None, window=None):
         self.heldin = _trialize(torch.as_tensor(heldin, dtype=torch.float32), window)
         self.heldout = _trialize(_as_f32(heldout), window)
         self.behavior = _trialize(_as_f32(behavior), window)
+        self.actions = _trialize(_as_f32(actions), window)
         n_in = self.heldin.size(-1)
         n_out = self.heldout.size(-1) if self.heldout is not None else 0
         self.in_ids = torch.arange(n_in)
@@ -38,6 +39,8 @@ class SpikeWindows(Dataset):
             item["target_counts"] = self.heldout[i]
         if self.behavior is not None:
             item["behavior"] = self.behavior[i]
+        if self.actions is not None:
+            item["actions"] = self.actions[i]
         return item
 
     def collate(self, samples):
