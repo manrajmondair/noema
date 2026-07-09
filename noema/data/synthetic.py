@@ -92,3 +92,35 @@ class MultiSessionSystem:
         rates = torch.exp(z @ self.W[session] - 1.0)
         counts = torch.poisson(rates, generator=self._g)
         return counts, self.unit_ids(session), actions, z @ self.Wb
+
+
+class SensorySystem:
+    """External stimulus drives the neural latent. Used to check that the model can
+    predict a population's response to the outside world (an encoding model)."""
+
+    def __init__(self, units=60, latent=6, stim_dim=8, behavior_dim=2, decay=0.9,
+                 seed=0, device="cpu"):
+        g = torch.Generator(device=device).manual_seed(seed)
+        randn = lambda *s: torch.randn(*s, generator=g, device=device)
+        self.stim_dim, self.latent, self.decay, self.device = stim_dim, latent, decay, device
+        self.S = randn(stim_dim, latent) * 0.6
+        self.W = randn(latent, units) * 0.7
+        self.Wb = randn(latent, behavior_dim)
+        self._g = g
+
+    def response(self, stim):
+        z = torch.zeros(stim.size(0), self.latent, device=self.device)
+        states = []
+        for t in range(stim.size(1)):
+            z = self.decay * z + stim[:, t] @ self.S
+            states.append(z)
+        z = torch.stack(states, dim=1)
+        # Keep firing in a realistic per-bin range (~single-digit counts) so the
+        # Poisson likelihood is well conditioned, as it is for real recordings.
+        return torch.exp(0.3 * (z @ self.W) - 1.5), z @ self.Wb
+
+    def sample(self, batch=64, steps=50):
+        stim = torch.randn(batch, steps, self.stim_dim, generator=self._g, device=self.device)
+        rates, behavior = self.response(stim)
+        counts = torch.poisson(rates, generator=self._g)
+        return counts, torch.arange(rates.size(-1), device=self.device), stim, behavior

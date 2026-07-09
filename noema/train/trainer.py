@@ -20,6 +20,7 @@ class TrainConfig:
     w_forecast: float = 1.0
     w_behavior: float = 1.0
     w_session: float = 1.0
+    w_sensory: float = 1.0
     amp: bool = True
     log_every: int = 50
     ckpt: str = "checkpoints/noema.pt"
@@ -61,13 +62,15 @@ def train(model, loader, cfg, device=None, on_log=None):
                 target_counts=batch.get("target_counts"),
                 target_unit_ids=batch.get("target_unit_ids"),
                 session=batch.get("session"),
+                context=batch.get("context"),
             )
             loss = (cfg.w_rate * out["loss_rate"]
                     + cfg.w_jepa * out["loss_jepa"]
                     + cfg.w_forecast * out["loss_forecast"]
                     + cfg.w_cosmooth * out.get("loss_cosmooth", 0.0)
                     + cfg.w_behavior * out.get("loss_behavior", 0.0)
-                    + cfg.w_session * out.get("loss_session", 0.0))
+                    + cfg.w_session * out.get("loss_session", 0.0)
+                    + cfg.w_sensory * out.get("loss_sensory", 0.0))
 
         opt.zero_grad(set_to_none=True)
         loss.backward()
