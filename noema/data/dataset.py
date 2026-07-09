@@ -20,15 +20,18 @@ def _trialize(x, window):
 
 
 class SpikeWindows(Dataset):
-    def __init__(self, heldin, heldout=None, behavior=None, actions=None, window=None):
+    def __init__(self, heldin, heldout=None, behavior=None, actions=None, window=None,
+                 unit_ids=None):
         self.heldin = _trialize(torch.as_tensor(heldin, dtype=torch.float32), window)
         self.heldout = _trialize(_as_f32(heldout), window)
         self.behavior = _trialize(_as_f32(behavior), window)
         self.actions = _trialize(_as_f32(actions), window)
         n_in = self.heldin.size(-1)
         n_out = self.heldout.size(-1) if self.heldout is not None else 0
-        self.in_ids = torch.arange(n_in)
-        self.out_ids = torch.arange(n_in, n_in + n_out)
+        # Explicit ids place a session's units in a shared global embedding table.
+        base = torch.arange(n_in) if unit_ids is None else torch.as_tensor(unit_ids)
+        self.in_ids = base
+        self.out_ids = torch.arange(n_out) + (base.max() + 1 if n_in else 0)
 
     def __len__(self):
         return self.heldin.size(0)

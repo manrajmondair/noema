@@ -58,3 +58,37 @@ class LinearSpikeSystem:
         counts = torch.poisson(rates, generator=self._g)
         unit_ids = torch.arange(rates.size(-1), device=self.device)
         return counts, unit_ids, actions, behavior
+
+
+class MultiSessionSystem:
+    """One latent dynamics observed by a different population each session.
+
+    Dynamics, action drive, and behavior read-out are shared; only the unit
+    projection changes per session, so a model can transfer across sessions only
+    by routing new units into the shared latent space.
+    """
+
+    def __init__(self, sessions=4, units=40, latent=6, action_dim=2, behavior_dim=2,
+                 decay=0.9, seed=0, device="cpu"):
+        g = torch.Generator(device=device).manual_seed(seed)
+        randn = lambda *s: torch.randn(*s, generator=g, device=device)
+        self.units, self.action_dim, self.latent, self.decay = units, action_dim, latent, decay
+        self.device, self._g = device, g
+        self.B = randn(action_dim, latent) * 0.5
+        self.Wb = randn(latent, behavior_dim)
+        self.W = [randn(latent, units) * 0.7 for _ in range(sessions)]  # per-session units
+
+    def unit_ids(self, session):
+        return torch.arange(session * self.units, (session + 1) * self.units, device=self.device)
+
+    def sample(self, session, batch=64, steps=50):
+        actions = torch.randn(batch, steps, self.action_dim, generator=self._g, device=self.device)
+        z = torch.zeros(batch, self.latent, device=self.device)
+        states = []
+        for t in range(steps):
+            z = self.decay * z + actions[:, t] @ self.B
+            states.append(z)
+        z = torch.stack(states, dim=1)
+        rates = torch.exp(z @ self.W[session] - 1.0)
+        counts = torch.poisson(rates, generator=self._g)
+        return counts, self.unit_ids(session), actions, z @ self.Wb
