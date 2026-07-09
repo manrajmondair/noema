@@ -39,6 +39,14 @@ pytest -q
 
 Training runs are GPU-first but the code is device-agnostic (CUDA → MPS → CPU). Benchmark and dataset extras install with `pip install -e ".[data,train]"`.
 
+## Neural Latents Benchmark
+
+```bash
+scripts/nlb.sh mc_maze 000128   # download + train; reports co-bps and velocity R²
+```
+
+The trainer uses bf16 autocast on CUDA and reports `co-bps` on held-out neurons and velocity R² on a validation split. Swap the dataset/dandiset for `mc_rtt 000129`, `area2_bump 000127`, or `dmfc_rsg 000130`.
+
 ## Roadmap
 
 Neural Latents Benchmark (co-bps, velocity R²) → FALCON cross-session few-shot → closed-loop simulator → sensory coupling → interactive demo.
