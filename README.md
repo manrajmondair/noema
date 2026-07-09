@@ -45,7 +45,17 @@ Training runs are GPU-first but the code is device-agnostic (CUDA → MPS → CP
 scripts/nlb.sh mc_maze 000128   # download + train; reports co-bps and velocity R²
 ```
 
-The trainer uses bf16 autocast on CUDA and reports `co-bps` on held-out neurons and velocity R² on a validation split. Swap the dataset/dandiset for `mc_rtt 000129`, `area2_bump 000127`, or `dmfc_rsg 000130`.
+The trainer uses bf16 autocast on CUDA and reports `co-bps` on held-out neurons and velocity R² on a validation split. Swap the dataset/dandiset for `mc_rtt 000129`, `area2_bump 000127`, or `dmfc_rsg 000130`. The `co-bps` implementation matches the official benchmark definition.
+
+### Cross-subject pretraining
+
+```bash
+scripts/pretrain.sh                        # self-supervised across several datasets
+python -m noema.train.run --dataset nlb --name mc_maze --path data/mc_maze \
+  --init checkpoints/noema.pt --steps 5000 # fine-tune, warm-started backbone
+```
+
+Stage 1 places each dataset's neurons in a disjoint slice of one embedding table with a session label (driving the adversarial invariance term); stage 2 fine-tunes a single dataset with its behavior labels from the pretrained backbone.
 
 ## Roadmap
 
