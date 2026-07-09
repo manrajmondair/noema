@@ -40,12 +40,18 @@ class Noema(nn.Module):
     def encode(self, counts, unit_ids):
         return self.encoder(self.tokenizer.encode(counts, unit_ids))
 
-    def forward(self, counts, unit_ids, actions=None, behavior=None, mask=None):
+    def forward(self, counts, unit_ids, actions=None, behavior=None, mask=None,
+                target_counts=None, target_unit_ids=None):
         tokens = self.tokenizer.encode(counts, unit_ids)
         z = self.encoder(tokens)
 
         out = {"z": z, "rate": self.tokenizer.decode(z, unit_ids)}
         out["loss_rate"] = poisson_nll(out["rate"], counts, mask)
+
+        # Co-smoothing: infer the firing of held-out units the encoder never saw.
+        if target_counts is not None:
+            held_out = self.tokenizer.decode(z, target_unit_ids)
+            out["loss_cosmooth"] = poisson_nll(held_out, target_counts)
 
         target = self.teacher(tokens)
         pred = self.world(z, actions)
