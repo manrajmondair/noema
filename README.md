@@ -21,12 +21,13 @@ over a learned latent state `z`. A forward model of this kind gives decoding, dr
 
 ```
 noema/
-  models/   tokenizer, encoder, world_model, heads, assembly
-  data/     dataset loaders + synthetic generator
-  train/    training entrypoints
-  sim/      closed-loop rollout environment
-  eval/     benchmark harnesses (NLB, FALCON)
-tests/      wiring + overfit checks
+  models/   tokenizer, encoder, world model, sensory coupling, session adversary
+  data/     dataset, synthetic systems, multi-session pretraining
+  train/    trainer, few-shot adaptation, CLI
+  sim/      imagined rollouts
+  eval/     metrics, baselines, NLB, FALCON, streaming, calibration, sim2real
+demo/       interactive in-browser world model (parity-checked against PyTorch)
+tests/      unit + integration checks
 ```
 
 ## Getting started
@@ -57,6 +58,19 @@ python -m noema.train.run --dataset nlb --name mc_maze --path data/mc_maze \
 
 Stage 1 places each dataset's neurons in a disjoint slice of one embedding table with a session label (driving the adversarial invariance term); stage 2 fine-tunes a single dataset with its behavior labels from the pretrained backbone.
 
-## Roadmap
+## Evaluation & capabilities
 
-Neural Latents Benchmark (co-bps, velocity R²) → FALCON cross-session few-shot → closed-loop simulator → sensory coupling → interactive demo.
+A forward model buys more than offline accuracy:
+
+- **Streaming / online decode** — `eval/streaming.py` decodes one spike bin at a time over a rolling window; `eval/falcon.py` wraps it in the FALCON `BCIDecoder` interface (verified against the challenge package).
+- **Calibration curve** — `eval/calibration.py` plots decode accuracy against calibration budget, few-shot transfer versus training from scratch: the practical payoff of pretraining.
+- **Sim-to-real** — `eval/sim2real.py` fits a fresh decoder purely on world-model-imagined data and scores it on real held-out recordings.
+- **Baselines** — `eval/baselines.py` ridge velocity decoder, the reference to beat.
+
+## Demo
+
+`demo/noema.html` runs the trained world model live in the browser — drag to command a movement and watch the imagined population firing and decoded motion respond. The JS forward pass is verified against PyTorch (`demo/parity.mjs`).
+
+## Status
+
+Architecture, training, the benchmarks, and the capabilities above are implemented and tested on synthetic neural dynamics; the data and evaluation paths are verified against the real NLB (`nlb_tools`) and FALCON (`falcon-challenge`) packages. Competitive numbers on real recordings are the next step and need GPU training.
