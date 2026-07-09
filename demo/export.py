@@ -151,7 +151,9 @@ function stepModel() {
   const rates = decode(next, M), vel = behavior(next, M);
   for (const v of rates) rmax = Math.max(rmax, v);
   history.push(rates); if (history.length > 90) history.shift();
-  pos = [pos[0] + vel[0] * 0.12, pos[1] + vel[1] * 0.12];
+  // Light friction keeps the decoded cursor on-screen and eases it back to
+  // center when steering stops, instead of drifting away unbounded.
+  pos = [pos[0] * 0.95 + vel[0] * 0.15, pos[1] * 0.95 + vel[1] * 0.15];
   path.push(pos.slice()); if (path.length > 260) path.shift();
 }
 
