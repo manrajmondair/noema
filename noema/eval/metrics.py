@@ -2,7 +2,6 @@
 
 import math
 
-import torch
 
 
 def bits_per_spike(rates, spikes):

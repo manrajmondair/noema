@@ -88,7 +88,7 @@ def build_html(data):
     # so the page is fully self-contained and openable without a server.
     core = (HERE / "model.mjs").read_text()
     core = core.replace("export function", "function")
-    core = "\n".join(l for l in core.splitlines() if not l.startswith("export {"))
+    core = "\n".join(line for line in core.splitlines() if not line.startswith("export {"))
     html = TEMPLATE.replace("/*MODEL_CORE*/", core).replace("__DATA__", json.dumps(data))
     (HERE / "noema.html").write_text(html)
 

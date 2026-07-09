@@ -19,3 +19,6 @@ include = ["noema*"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+ignore = ["E731"]  # local lambda helpers are idiomatic and clear
