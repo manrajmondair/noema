@@ -88,9 +88,11 @@ def main():
     p.add_argument("--batch", type=int, default=64)
     p.add_argument("--steps", type=int, default=20_000)
     p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--seed", type=int, default=0)
     p.add_argument("--wandb", action="store_true")
     args = p.parse_args()
 
+    torch.manual_seed(args.seed)
     pretrain(args) if args.datasets else fit(args)
 
 
