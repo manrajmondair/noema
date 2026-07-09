@@ -1,0 +1,34 @@
+# Working notes and local tooling (never publish)
+CLAUDE.md
+.claude/
+plans/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Data, checkpoints, logs
+/data/
+/datasets/
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+wandb/
+outputs/
+lightning_logs/
+runs/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
