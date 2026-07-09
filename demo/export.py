@@ -38,11 +38,31 @@ def _block(b):
     }
 
 
+def held_actions(batch, steps, dim, g, hold=10):
+    """Piecewise-constant action headings held for several bins each. Matches how a
+    user drives the demo — sustained steering — so held commands stay in-distribution
+    and the decoder recovers direction faithfully (per-step white noise does not)."""
+    actions, current = [], torch.randn(batch, dim, generator=g)
+    for t in range(steps):
+        if t % hold == 0:
+            current = torch.randn(batch, dim, generator=g)
+        actions.append(current)
+    return torch.stack(actions, dim=1)
+
+
+def rollout_dataset(system, batch, steps, g):
+    actions = held_actions(batch, steps, system.action_dim, g)
+    _, rates, _ = system.rollout(actions)
+    return torch.poisson(rates, generator=g), actions
+
+
 def export():
     torch.manual_seed(0)
     dim, heads, wm_depth, units = 64, 4, 2, 32
     system = LinearSpikeSystem(units=units, latent=6, action_dim=2, seed=1)
-    counts, unit_ids, actions, _ = system.sample(batch=256, steps=50)
+    g = torch.Generator().manual_seed(1)
+    counts, actions = rollout_dataset(system, batch=384, steps=50, g=g)
+    unit_ids = torch.arange(units)
     # Decode the intended movement itself, so steering the action moves the cursor
     # that way — the population encodes the command and the decoder recovers it.
     ds = SpikeWindows(counts, behavior=actions, actions=actions)
@@ -50,12 +70,12 @@ def export():
 
     model = Noema(dim=dim, enc_depth=2, wm_depth=wm_depth, heads=heads, max_units=units,
                   action_dim=2, behavior_dim=2)
-    train(model, loader, TrainConfig(steps=1000, warmup=60, lr=3e-3, w_forecast=2.0, ckpt=""),
+    train(model, loader, TrainConfig(steps=2000, warmup=100, lr=3e-3, w_forecast=2.0, ckpt=""),
           device=torch.device("cpu"))
     model.eval()
 
     with torch.no_grad():
-        counts, unit_ids, actions, _ = system.sample(batch=1, steps=50)
+        counts, actions = rollout_dataset(system, batch=1, steps=50, g=g)
         seed = 15
         z_seed = model.encode(counts[:, :seed], unit_ids)
         future = actions[:, seed:]
@@ -141,7 +161,7 @@ const M = __DATA__;
 const N = M.readout.length;
 let z = M.seed.z.map(r => r.slice());
 let a = M.seed.actions.map(r => r.slice());
-let action = [0, 0], pos = [0, 0], rmax = 1;
+let action = [0, 0], pos = [0, 0];
 const CAP = 45, history = [], path = [];
 
 function stepModel() {
@@ -149,7 +169,6 @@ function stepModel() {
   z.push(next); a.push(action.slice());
   if (z.length > CAP) { z.shift(); a.shift(); }
   const rates = decode(next, M), vel = behavior(next, M);
-  for (const v of rates) rmax = Math.max(rmax, v);
   history.push(rates); if (history.length > 90) history.shift();
   // Light friction keeps the decoded cursor on-screen and eases it back to
   // center when steering stops, instead of drifting away unbounded.
@@ -164,7 +183,9 @@ function drawRaster() {
   raster.width = W; raster.height = H;
   const cw = W / 90, ch = H / N;
   for (let x = 0; x < T; x++) for (let y = 0; y < N; y++) {
-    const u = Math.min(1, history[x][y] / rmax);
+    // Fixed scale + gamma: robust to rare high-firing bins, so typical activity
+    // stays visible instead of washing out against an outlier-driven maximum.
+    const u = Math.min(1, (history[x][y] / 6) ** 0.6);
     rx.fillStyle = `rgb(${20 + u * 40 | 0},${30 + u * 150 | 0},${50 + u * 190 | 0})`;
     rx.fillRect(x * cw, y * ch, cw + 1, ch + 1);
   }
