@@ -49,7 +49,9 @@ class LinearSpikeSystem:
             z = self.decay * z + actions[:, t] @ self.B
             states.append(z)
         z = torch.stack(states, dim=1)
-        rates = torch.exp(z @ self.W - 1.0)
+        # Bounded, realistic per-bin firing (mean ~1-2 counts); the cap stops the
+        # exp tail from producing counts no real neuron would fire.
+        rates = (0.4 * (z @ self.W)).clamp(max=3.0).exp()
         return z, rates, z @ self.Wb
 
     def sample(self, batch=64, steps=50):
@@ -89,7 +91,7 @@ class MultiSessionSystem:
             z = self.decay * z + actions[:, t] @ self.B
             states.append(z)
         z = torch.stack(states, dim=1)
-        rates = torch.exp(z @ self.W[session] - 1.0)
+        rates = (0.4 * (z @ self.W[session])).clamp(max=3.0).exp()  # realistic firing
         counts = torch.poisson(rates, generator=self._g)
         return counts, self.unit_ids(session), actions, z @ self.Wb
 
