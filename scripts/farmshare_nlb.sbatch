@@ -2,6 +2,8 @@
 # Train Noema on one NLB dataset on a FarmShare L40S. Submit from the repo root
 # after running scripts/farmshare_setup.sh:  sbatch scripts/farmshare_nlb.sbatch
 # Pick a dataset with:  DATASET=mc_rtt sbatch scripts/farmshare_nlb.sbatch
+# Warm-start from a pretrained backbone (fine-tune) by setting INIT:
+#   sbatch --export=ALL,INIT=checkpoints/noema.pt scripts/farmshare_nlb.sbatch
 #SBATCH --job-name=noema-nlb
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu
@@ -19,5 +21,5 @@ DATASET="${DATASET:-mc_maze}"
 python -m noema.train.run \
   --dataset nlb --name "$DATASET" --path "data/$DATASET" \
   --dim 256 --enc-depth 6 --wm-depth 3 --heads 8 \
-  --batch 64 --steps 20000 --lr 3e-4 --seed 0
+  --batch 64 --steps 20000 --lr 3e-4 --seed 0 ${INIT:+--init "$INIT"}
 # co-bps and velocity R2 print to logs/noema-nlb-<jobid>.out at the end.

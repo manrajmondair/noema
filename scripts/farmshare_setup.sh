@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # One-time setup on a FarmShare LOGIN node (rice.stanford.edu): build the
 # environment and fetch data while internet is available — compute nodes may not
-# have it. Run this before submitting any GPU job.
-#   Usage: scripts/farmshare_setup.sh [dataset] [dandiset]   (default: mc_maze 000128)
+# have it. Pass dataset names (default mc_maze); list several to prep pretraining.
+#   scripts/farmshare_setup.sh                              # just mc_maze
+#   scripts/farmshare_setup.sh mc_maze mc_rtt area2_bump    # for cross-subject pretraining
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DATASET="${1:-mc_maze}"
-DANDISET="${2:-000128}"
+dandiset() { case "$1" in
+  mc_maze) echo 000128 ;; mc_rtt) echo 000129 ;;
+  area2_bump) echo 000127 ;; dmfc_rsg) echo 000130 ;;
+  *) echo "unknown dataset: $1" >&2; exit 1 ;; esac; }
 
 module load python 2>/dev/null || true          # best-effort; ignore if no module system
 PY=$(command -v python3.11 || command -v python3)
@@ -22,11 +25,13 @@ source .venv/bin/activate
 pip install -q --upgrade pip
 pip install -q -e ".[data,train]"               # torch pulls the default CUDA wheel here
 
-DATA_DIR="data/${DATASET}"
-if [ ! -d "$DATA_DIR" ]; then
-  mkdir -p data
-  dandi download "DANDI:${DANDISET}/draft" -o data/
-  mv "data/${DANDISET}" "$DATA_DIR"              # dandi nests under the dandiset id
-fi
+for name in "${@:-mc_maze}"; do
+  dir="data/$name"
+  if [ ! -d "$dir" ]; then
+    mkdir -p data
+    dandi download "DANDI:$(dandiset "$name")/draft" -o data/
+    mv "data/$(dandiset "$name")" "$dir"        # dandi nests under the dandiset id
+  fi
+done
 mkdir -p logs
 echo "setup complete — submit training with: sbatch scripts/farmshare_nlb.sbatch"
