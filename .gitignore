@@ -24,6 +24,8 @@ checkpoints/
 *.pt
 *.pth
 wandb/
+logs/
+*.out
 outputs/
 lightning_logs/
 runs/
