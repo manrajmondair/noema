@@ -17,8 +17,9 @@ set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 source "$HOME/miniforge3/etc/profile.d/conda.sh" && conda activate noema
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+mkdir -p checkpoints
 
 python -m noema.train.run \
   --datasets mc_maze,mc_rtt,area2_bump --data-root data \
   --dim 256 --enc-depth 6 --wm-depth 3 --heads 8 \
-  --batch 64 --steps 40000 --lr 3e-4 --seed 0
+  --batch 64 --steps 40000 --lr 3e-4 --seed 0 --ckpt checkpoints/pretrain.pt

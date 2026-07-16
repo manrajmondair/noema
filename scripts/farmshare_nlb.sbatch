@@ -16,10 +16,11 @@ set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 source "$HOME/miniforge3/etc/profile.d/conda.sh" && conda activate noema
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+mkdir -p checkpoints
 
 DATASET="${DATASET:-mc_maze}"
 python -m noema.train.run \
   --dataset nlb --name "$DATASET" --path "data/$DATASET" \
   --dim "${DIM:-256}" --enc-depth "${ENC:-6}" --wm-depth "${WM:-3}" --heads "${HEADS:-8}" \
-  --batch "${BATCH:-64}" --steps "${STEPS:-20000}" --lr "${LR:-3e-4}" --seed "${SEED:-0}" ${INIT:+--init "$INIT"}
+  --batch "${BATCH:-64}" --steps "${STEPS:-20000}" --lr "${LR:-3e-4}" --seed "${SEED:-0}" --ckpt "checkpoints/${SLURM_JOB_NAME:-noema}-${SLURM_JOB_ID}.pt" ${INIT:+--init "$INIT"}
 # co-bps and velocity R2 print to logs/noema-nlb-<jobid>.out at the end.

@@ -44,7 +44,7 @@ def pretrain(args):
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
                   heads=args.heads, max_units=max_units, sessions=n_sessions)
     run = wandb_run(args)
-    train(model, batches, TrainConfig(steps=args.steps, lr=args.lr), on_log=logger(run))
+    train(model, batches, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt), on_log=logger(run))
     if run:
         run.finish()
 
@@ -62,7 +62,7 @@ def fit(args):
     loader = DataLoader(ds, batch_size=args.batch, shuffle=True,
                         collate_fn=ds.collate, drop_last=True)
     run = wandb_run(args)
-    train(model, loader, TrainConfig(steps=args.steps, lr=args.lr), on_log=logger(run))
+    train(model, loader, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt), on_log=logger(run))
 
     metrics = evaluate(model, val_ds)
     if args.dataset == "nlb":
@@ -91,6 +91,7 @@ def main():
     p.add_argument("--batch", type=int, default=64)
     p.add_argument("--steps", type=int, default=20_000)
     p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--ckpt", default="checkpoints/noema.pt")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--wandb", action="store_true")
     args = p.parse_args()
