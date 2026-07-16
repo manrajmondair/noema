@@ -15,7 +15,7 @@
 #SBATCH --output=logs/%x-%j.out
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
-source .venv/bin/activate
+source "$HOME/miniforge3/etc/profile.d/conda.sh" && conda activate noema
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 python -m noema.train.run \
