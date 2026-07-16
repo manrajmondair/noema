@@ -20,6 +20,6 @@ nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 DATASET="${DATASET:-mc_maze}"
 python -m noema.train.run \
   --dataset nlb --name "$DATASET" --path "data/$DATASET" \
-  --dim 256 --enc-depth 6 --wm-depth 3 --heads 8 \
-  --batch 64 --steps 20000 --lr 3e-4 --seed 0 ${INIT:+--init "$INIT"}
+  --dim "${DIM:-256}" --enc-depth "${ENC:-6}" --wm-depth "${WM:-3}" --heads "${HEADS:-8}" \
+  --batch "${BATCH:-64}" --steps "${STEPS:-20000}" --lr "${LR:-3e-4}" --seed "${SEED:-0}" ${INIT:+--init "$INIT"}
 # co-bps and velocity R2 print to logs/noema-nlb-<jobid>.out at the end.
