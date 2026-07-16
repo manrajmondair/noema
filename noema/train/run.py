@@ -65,6 +65,9 @@ def fit(args):
     train(model, loader, TrainConfig(steps=args.steps, lr=args.lr), on_log=logger(run))
 
     metrics = evaluate(model, val_ds)
+    if args.dataset == "nlb":
+        from ..eval.nlb import official_velocity_r2
+        metrics["official_vel_r2"] = official_velocity_r2(model, ds, val_ds)
     print("eval " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()), flush=True)
     if run:
         run.summary.update(metrics)
