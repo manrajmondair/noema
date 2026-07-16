@@ -16,6 +16,7 @@ class PopulationTokenizer(nn.Module):
         self.embed = nn.Embedding(max_units, dim)   # input mixing weights
         self.readout = nn.Embedding(max_units, dim)  # output (log-rate) weights
         self.bias = nn.Embedding(max_units, 1)
+        self.value = nn.Linear(1, dim)               # per-unit count -> token (spatial path)
         self.scale = dim ** -0.5
         nn.init.zeros_(self.bias.weight)
 
@@ -27,3 +28,12 @@ class PopulationTokenizer(nn.Module):
         # latent [B,T,dim] -> per-unit Poisson log-rate [B,T,N]
         w = self.readout(unit_ids)
         return z @ w.t() * self.scale + self.bias(unit_ids).squeeze(-1)
+
+    def encode_units(self, counts, unit_ids):
+        # counts [B,T,N] -> per-unit tokens [B,T,N,dim]: unit identity + its count
+        return self.embed(unit_ids) + self.value(torch.log1p(counts).unsqueeze(-1))
+
+    def decode_units(self, tokens, unit_ids):
+        # per-unit tokens [B,T,N,dim] -> per-unit log-rate [B,T,N]
+        w = self.readout(unit_ids)
+        return (tokens * w).sum(-1) * self.scale + self.bias(unit_ids).squeeze(-1)

@@ -8,7 +8,7 @@ from torch import nn
 
 from .adversary import SessionAdversary
 from .coupling import SensoryEncoder
-from .encoder import TemporalEncoder
+from .encoder import SpatioTemporalEncoder, TemporalEncoder
 from .heads import BehaviorHead
 from .tokenizer import PopulationTokenizer
 from .world_model import WorldModel
@@ -31,10 +31,11 @@ def latent_prediction_loss(pred, target):
 class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
-                 adv_weight=1.0, ema=0.996):
+                 adv_weight=1.0, ema=0.996, spatial=False):
         super().__init__()
+        self.spatial = spatial
         self.tokenizer = PopulationTokenizer(dim, max_units)
-        self.encoder = TemporalEncoder(dim, enc_depth, heads)
+        self.encoder = (SpatioTemporalEncoder if spatial else TemporalEncoder)(dim, enc_depth, heads)
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
         self.behavior = BehaviorHead(dim, behavior_dim) if behavior_dim else None
         self.sensory = SensoryEncoder(context_dim, dim, max(2, wm_depth), heads) if context_dim else None
@@ -43,8 +44,20 @@ class Noema(nn.Module):
         self.mask_ratio = mask_ratio
         self.ema = ema
 
+    def _represent(self, counts, unit_ids):
+        # returns (per-unit tokens or None, pooled latent z [B,T,dim])
+        if self.spatial:
+            tokens = self.encoder(self.tokenizer.encode_units(counts, unit_ids))
+            return tokens, tokens.mean(2)  # pool over units into the shared latent
+        return None, self.encoder(self.tokenizer.encode(counts, unit_ids))
+
     def encode(self, counts, unit_ids):
-        return self.encoder(self.tokenizer.encode(counts, unit_ids))
+        return self._represent(counts, unit_ids)[1]
+
+    def _teacher_target(self, counts, unit_ids):
+        if self.spatial:
+            return self.teacher(self.tokenizer.encode_units(counts, unit_ids)).mean(2)
+        return self.teacher(self.tokenizer.encode(counts, unit_ids))
 
     def forward(self, counts, unit_ids, actions=None, behavior=None,
                 target_counts=None, target_unit_ids=None, session=None, context=None):
@@ -62,8 +75,9 @@ class Noema(nn.Module):
             shuffled = counts.reshape(-1)[torch.randperm(counts.numel(), device=counts.device)].reshape_as(counts)
             observed = counts * (1 - zero - rand) + shuffled * rand
 
-        z = self.encode(observed, unit_ids)
-        out = {"z": z, "rate": self.tokenizer.decode(z, unit_ids)}
+        tokens, z = self._represent(observed, unit_ids)
+        rate = self.tokenizer.decode_units(tokens, unit_ids) if self.spatial else self.tokenizer.decode(z, unit_ids)
+        out = {"z": z, "rate": rate}
         out["loss_rate"] = poisson_nll(out["rate"], counts, loss_mask)
 
         # Co-smoothing: infer the firing of held-out units the encoder never saw.
@@ -71,7 +85,7 @@ class Noema(nn.Module):
             out["loss_cosmooth"] = poisson_nll(self.tokenizer.decode(z, target_unit_ids), target_counts)
 
         # Forecast the next latent; the target comes from the clean, unmasked view.
-        target = self.teacher(self.tokenizer.encode(counts, unit_ids))
+        target = self._teacher_target(counts, unit_ids)
         pred = self.world(z, actions)
         out["loss_jepa"] = latent_prediction_loss(pred[:, :-1], target[:, 1:])
 

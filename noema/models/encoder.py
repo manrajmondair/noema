@@ -57,3 +57,28 @@ class TemporalEncoder(nn.Module):
         for block in self.blocks:
             x = block(x, cos, sin, causal)
         return self.norm(x)
+
+
+class SpatioTemporalEncoder(nn.Module):
+    """Factorized attention over time and over units (STNDT-style). Input is
+    per-unit tokens [B,T,N,D]: temporal blocks attend over T with rotary; spatial
+    blocks attend over the unit set N with no positional code (units are a set)."""
+
+    def __init__(self, dim: int, depth: int, heads: int):
+        super().__init__()
+        self.temporal = nn.ModuleList(Block(dim, heads) for _ in range(depth))
+        self.spatial = nn.ModuleList(Block(dim, heads) for _ in range(depth))
+        self.norm = nn.LayerNorm(dim)
+        self.head_dim = dim // heads
+
+    def forward(self, x):  # x: [B, T, N, D]
+        B, T, N, D = x.shape
+        cos_t, sin_t = rotary_tables(self.head_dim, T, x.device)
+        one = torch.ones(N, self.head_dim // 2, device=x.device)   # identity rotary = no positional
+        zero = torch.zeros(N, self.head_dim // 2, device=x.device)
+        for tblk, sblk in zip(self.temporal, self.spatial):
+            xt = x.permute(0, 2, 1, 3).reshape(B * N, T, D)
+            x = tblk(xt, cos_t, sin_t, False).reshape(B, N, T, D).permute(0, 2, 1, 3)
+            xs = x.reshape(B * T, N, D)
+            x = sblk(xs, one, zero, False).reshape(B, T, N, D)
+        return self.norm(x)
