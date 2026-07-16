@@ -40,18 +40,26 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
     in_ids = torch.arange(n_hi, device=device)
     out_ids = torch.arange(n_ho, device=device) + n_hi
 
-    # Greedy-select the ensemble on the held-out val split, then predict test/train
+    # Greedy-select the ensemble and tune inference smoothing on the held-out val
+    # split (our dev set; the test labels stay sequestered), then predict test/train
     # with the chosen members (weighted by pick count) — our best ensemble, honestly.
+    from .baselines import gaussian_smooth
     from .ensemble import greedy_ensemble
+    from .metrics import bits_per_spike
     val = make_train_input_tensors(dataset, name, trial_split="val", save_file=False)
     vh = torch.as_tensor(val["train_spikes_heldin"], dtype=torch.float32, device=device)
     val_member = [m.cosmooth(vh, in_ids, out_ids).exp().cpu() for m in models]
-    chosen = greedy_ensemble(val_member, torch.as_tensor(val["train_spikes_heldout"], dtype=torch.float32))
+    val_ho = torch.as_tensor(val["train_spikes_heldout"], dtype=torch.float32)
+    chosen = greedy_ensemble(val_member, val_ho)
     models = [models[j] for j in chosen]
-    print(f"greedy selected {len(chosen)} picks from {len(val_member)} members", flush=True)
+    sel_val = sum(val_member[j] for j in chosen) / len(chosen)
+    sigmas = (0.0, 1.0, 1.5, 2.0, 2.5, 3.0)
+    sigma = max(sigmas, key=lambda s: bits_per_spike(gaussian_smooth(sel_val, s), val_ho))
+    print(f"greedy selected {len(chosen)} picks from {len(val_member)} members, smoothing sigma={sigma}", flush=True)
 
-    er_hi, er_ho = _rates(models, eval_hi, in_ids, out_ids, device)
-    tr_hi, tr_ho = _rates(models, train["train_spikes_heldin"], in_ids, out_ids, device)
+    smooth = lambda a: gaussian_smooth(torch.as_tensor(a, dtype=torch.float32), sigma).numpy()
+    er_hi, er_ho = (smooth(r) for r in _rates(models, eval_hi, in_ids, out_ids, device))
+    tr_hi, tr_ho = (smooth(r) for r in _rates(models, train["train_spikes_heldin"], in_ids, out_ids, device))
     submission = {name: {
         "eval_rates_heldin": er_hi, "eval_rates_heldout": er_ho,
         "train_rates_heldin": tr_hi, "train_rates_heldout": tr_ho,
