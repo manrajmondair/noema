@@ -62,3 +62,16 @@ class SpikeWindows(Dataset):
 
 def _as_f32(x):
     return None if x is None else torch.as_tensor(x, dtype=torch.float32)
+
+
+def split_trials(ds, frac, seed=0):
+    """Partition a dataset's trials into two SpikeWindows (train core, selection set),
+    so checkpoints and hyperparameters are chosen on data disjoint from the reported split."""
+    perm = torch.randperm(len(ds), generator=torch.Generator().manual_seed(seed))
+    cut = int(len(ds) * frac)
+
+    def carve(idx):
+        pick = lambda t: t[idx] if t is not None else None
+        return SpikeWindows(ds.heldin[idx], pick(ds.heldout), pick(ds.behavior),
+                            actions=pick(ds.actions), unit_ids=ds.in_ids)
+    return carve(perm[:cut]), carve(perm[cut:])

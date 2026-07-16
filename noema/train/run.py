@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .. import Noema
-from ..data.dataset import SpikeWindows
+from ..data.dataset import SpikeWindows, split_trials
 from ..data.pretrain import combine_sessions
 from ..data.synthetic import synthetic_batch
 from ..eval.nlb import evaluate
@@ -17,19 +17,6 @@ def build_dataset(args, split="train"):
         return load_nlb(args.path, args.name, args.bin_ms, args.window, split=split)
     counts, _, behavior = synthetic_batch(batch=512, steps=40, units=80, behavior_dim=2)
     return SpikeWindows(counts[..., :60], counts[..., 60:], behavior)
-
-
-def split_trials(ds, frac, seed=0):
-    """Partition a dataset's trials into two SpikeWindows (train core, selection set),
-    so checkpoints are selected on data disjoint from the reported val split."""
-    perm = torch.randperm(len(ds), generator=torch.Generator().manual_seed(seed))
-    cut = int(len(ds) * frac)
-
-    def carve(idx):
-        pick = lambda t: t[idx] if t is not None else None
-        return SpikeWindows(ds.heldin[idx], pick(ds.heldout), pick(ds.behavior),
-                            actions=pick(ds.actions), unit_ids=ds.in_ids)
-    return carve(perm[:cut]), carve(perm[cut:])
 
 
 def logger(run):
