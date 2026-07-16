@@ -31,9 +31,10 @@ def latent_prediction_loss(pred, target):
 class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
-                 adv_weight=1.0, ema=0.996, spatial=False):
+                 adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0):
         super().__init__()
         self.spatial = spatial
+        self.neuron_mask_ratio = neuron_mask_ratio
         self.tokenizer = PopulationTokenizer(dim, max_units)
         self.encoder = (SpatioTemporalEncoder if spatial else TemporalEncoder)(dim, enc_depth, heads)
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
@@ -83,6 +84,18 @@ class Noema(nn.Module):
         # Co-smoothing: infer the firing of held-out units the encoder never saw.
         if target_counts is not None:
             out["loss_cosmooth"] = poisson_nll(self.tokenizer.decode(z, target_unit_ids), target_counts)
+
+        # Random-neuron co-smoothing: hide a random subset of input units and predict
+        # them from the rest, so the metric objective (predict any held-out unit) is
+        # trained on every split, not just the fixed one. Zeroing drops a unit from the
+        # summed token entirely (log1p(0)=0), so the encoder genuinely never sees it.
+        if self.training and self.neuron_mask_ratio > 0:
+            held = torch.rand(counts.size(-1), device=counts.device) < self.neuron_mask_ratio
+            if held.any():
+                hidden = counts.clone()
+                hidden[..., held] = 0
+                pred = self.tokenizer.decode(self.encode(hidden, unit_ids), unit_ids[held])
+                out["loss_ncosmooth"] = poisson_nll(pred, counts[..., held])
 
         # Forecast the next latent; the target comes from the clean, unmasked view.
         target = self._teacher_target(counts, unit_ids)

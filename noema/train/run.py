@@ -42,7 +42,7 @@ def pretrain(args):
     batches, max_units, n_sessions = combine_sessions(sessions, args.batch)
 
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
-                  heads=args.heads, max_units=max_units, sessions=n_sessions, spatial=args.spatial)
+                  heads=args.heads, max_units=max_units, sessions=n_sessions, spatial=args.spatial, neuron_mask_ratio=args.neuron_mask)
     run = wandb_run(args)
     train(model, batches, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt), on_log=logger(run))
     if run:
@@ -58,7 +58,7 @@ def fit(args):
     if state is not None:  # size the table to the pretrained one so its unit rows load
         max_units = max(max_units, state["tokenizer.embed.weight"].shape[0])
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
-                  heads=args.heads, max_units=max_units, behavior_dim=behavior_dim, spatial=args.spatial)
+                  heads=args.heads, max_units=max_units, behavior_dim=behavior_dim, spatial=args.spatial, neuron_mask_ratio=args.neuron_mask)
     if state is not None:  # warm-start backbone + shared unit embeddings; fresh heads stay fresh
         model.load_state_dict(state, strict=False)
 
@@ -99,6 +99,7 @@ def main():
     p.add_argument("--eval-every", type=int, default=500, help="val co-bps checkpoint selection interval")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--spatial", action="store_true", help="per-unit spatiotemporal attention (STNDT-style)")
+    p.add_argument("--neuron-mask", type=float, default=0.0, help="random-neuron co-smoothing ratio")
     p.add_argument("--wandb", action="store_true")
     args = p.parse_args()
 
