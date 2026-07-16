@@ -19,6 +19,19 @@ def build_dataset(args, split="train"):
     return SpikeWindows(counts[..., :60], counts[..., 60:], behavior)
 
 
+def split_trials(ds, frac, seed=0):
+    """Partition a dataset's trials into two SpikeWindows (train core, selection set),
+    so checkpoints are selected on data disjoint from the reported val split."""
+    perm = torch.randperm(len(ds), generator=torch.Generator().manual_seed(seed))
+    cut = int(len(ds) * frac)
+
+    def carve(idx):
+        pick = lambda t: t[idx] if t is not None else None
+        return SpikeWindows(ds.heldin[idx], pick(ds.heldout), pick(ds.behavior),
+                            actions=pick(ds.actions), unit_ids=ds.in_ids)
+    return carve(perm[:cut]), carve(perm[cut:])
+
+
 def logger(run):
     def log(step, losses):
         print(f"step {step:>6} " + " ".join(f"{k[5:]}={v:.4f}" for k, v in losses.items()), flush=True)
@@ -62,11 +75,13 @@ def fit(args):
     if state is not None:  # warm-start backbone + shared unit embeddings; fresh heads stay fresh
         model.load_state_dict(state, strict=False)
 
-    loader = DataLoader(ds, batch_size=args.batch, shuffle=True,
-                        collate_fn=ds.collate, drop_last=True)
+    # Select checkpoints on a set carved from train, not on the reported val split.
+    core_ds, select_ds = split_trials(ds, 0.85) if args.dataset == "nlb" else (ds, val_ds)
+    loader = DataLoader(core_ds, batch_size=args.batch, shuffle=True,
+                        collate_fn=core_ds.collate, drop_last=True)
     run = wandb_run(args)
     train(model, loader, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt, eval_every=args.eval_every),
-          on_log=logger(run), val_ds=val_ds)
+          on_log=logger(run), val_ds=select_ds)
 
     metrics = evaluate(model, val_ds)
     if args.dataset == "nlb":

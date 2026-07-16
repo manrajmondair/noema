@@ -53,5 +53,5 @@ def load_nlb(path, name="mc_maze", bin_ms=5, window=None, split="train"):
         tensors["train_spikes_heldin"],
         tensors["train_spikes_heldout"],
         behavior,
-        window,
+        window=window,
     )
