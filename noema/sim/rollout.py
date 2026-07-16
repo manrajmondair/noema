@@ -10,6 +10,15 @@ import torch
 
 @torch.no_grad()
 def imagine(model, seed_counts, unit_ids, future_actions, seed_actions=None):
+    """Roll the world model forward from a seed window, returning imagined future
+    (rates, behavior) — the rates already exponentiated.
+
+    Action alignment follows training: the transition out of a latent uses the
+    action at that latent's position. So the first imagined step is driven by the
+    last seed action and ``future_actions[t]`` drives the step after it; pass
+    ``seed_actions`` covering the seed window whenever the model is
+    action-conditioned. Emits ``future_actions.size(1)`` steps.
+    """
     model.eval()
     z = model.encode(seed_counts, unit_ids)
     a = seed_actions

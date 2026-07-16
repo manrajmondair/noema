@@ -40,7 +40,7 @@ class Noema(nn.Module):
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
         self.behavior = BehaviorHead(dim, behavior_dim) if behavior_dim else None
         self.cross = CrossReadout(dim, heads) if (spatial and cross) else None  # per-unit co-smoothing
-        self.sensory = SensoryEncoder(context_dim, dim, max(2, wm_depth), heads) if context_dim else None
+        self.sensory = SensoryEncoder(context_dim, dim, max(2, wm_depth)) if context_dim else None
         self.adversary = SessionAdversary(dim, sessions, adv_weight) if sessions else None
         self.teacher = copy.deepcopy(self.encoder).requires_grad_(False)
         self.mask_ratio = mask_ratio
@@ -145,19 +145,3 @@ class Noema(nn.Module):
     def update_teacher(self):
         for online, target in zip(self.encoder.parameters(), self.teacher.parameters()):
             target.lerp_(online, 1.0 - self.ema)
-
-    @torch.no_grad()
-    def rollout(self, seed_counts, unit_ids, future_actions, seed_actions=None):
-        """Imagine firing rates forward from a seed window under a plan of actions.
-
-        Latents and actions stay index-aligned: the prediction at position t uses
-        the action at t, so `seed_actions` must cover the seed window when the model
-        is action-conditioned.
-        """
-        z = self.encode(seed_counts, unit_ids)
-        a = seed_actions
-        for t in range(future_actions.size(1)):
-            z = torch.cat([z, self.world(z, a)[:, -1:]], dim=1)
-            if a is not None:
-                a = torch.cat([a, future_actions[:, t : t + 1]], dim=1)
-        return self.tokenizer.decode(z, unit_ids)

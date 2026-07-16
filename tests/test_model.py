@@ -14,11 +14,14 @@ def test_shapes():
 
 
 def test_rollout_shape():
+    from noema.sim.rollout import imagine
+
     counts, unit_ids, _ = synthetic_batch(batch=2, steps=16, units=25, behavior_dim=0)
     model = Noema(dim=64, enc_depth=2, wm_depth=1, heads=4, max_units=32)
     future = torch.zeros(2, 8, 0)  # no actions in the unconditioned model
-    rates = model.rollout(counts, unit_ids, future)
-    assert rates.shape == (2, 16 + 8, 25)
+    rates, behavior = imagine(model, counts, unit_ids, future)
+    assert rates.shape == (2, 8, 25)  # imagined future firing rates, seed excluded
+    assert behavior is None
 
 
 def test_overfits_single_batch():
