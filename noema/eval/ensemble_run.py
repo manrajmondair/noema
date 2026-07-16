@@ -12,7 +12,9 @@ import torch
 from .. import Noema
 from ..data.nlb import load_nlb
 from ..utils import default_device
-from .ensemble import ensemble_co_bps
+from .baselines import gaussian_smooth
+from .ensemble import ensemble_rates
+from .metrics import bits_per_spike
 
 
 def build_from_state(state, max_units, heads=8):
@@ -45,9 +47,10 @@ def main():
         models.append(model.to(device))
         print(f"  {path.split('/')[-1]}: {desc}", flush=True)
 
+    rates, targets = ensemble_rates(models, val, device=device)  # forward once, sweep smoothing
     best = (0.0, -1e9)
     for sigma in (0.0, 1.0, 1.5, 2.0, 2.5, 3.0):
-        cobps = ensemble_co_bps(models, val, device=device, smooth=sigma)
+        cobps = bits_per_spike(gaussian_smooth(rates, sigma) if sigma else rates, targets)
         print(f"  smooth={sigma}: co_bps = {cobps:.4f}", flush=True)
         best = max(best, (sigma, cobps), key=lambda x: x[1])
     print(f"ensemble co_bps ({len(models)} members) = {best[1]:.4f} (smooth={best[0]})", flush=True)

@@ -13,9 +13,8 @@ from .metrics import bits_per_spike
 
 
 @torch.no_grad()
-def ensemble_co_bps(models, dataset, device=None, batch_size=64, smooth=0.0):
-    """Mean of member rates, optionally smoothed over time, scored as co-bps.
-    Light temporal smoothing matches true (smooth) PSTHs and stacks with ensembling."""
+def ensemble_rates(models, dataset, device=None, batch_size=64):
+    """Mean predicted held-out firing rates across models, with targets."""
     device = device or next(models[0].parameters()).device
     for m in models:
         m.eval()
@@ -28,6 +27,13 @@ def ensemble_co_bps(models, dataset, device=None, batch_size=64, smooth=0.0):
         member = [m.tokenizer.decode(m.encode(counts, uid), tgt).exp() for m in models]
         rates.append(torch.stack(member).mean(0).cpu())
         targets.append(batch["target_counts"])
+    return torch.cat(rates), torch.cat(targets)
 
-    rates = gaussian_smooth(torch.cat(rates), smooth) if smooth > 0 else torch.cat(rates)
-    return bits_per_spike(rates, torch.cat(targets))
+
+def ensemble_co_bps(models, dataset, device=None, batch_size=64, smooth=0.0):
+    """Ensemble rates, optionally smoothed over time, scored as co-bps. Light
+    temporal smoothing matches true (smooth) PSTHs and stacks with ensembling."""
+    rates, targets = ensemble_rates(models, dataset, device, batch_size)
+    if smooth > 0:
+        rates = gaussian_smooth(rates, smooth)
+    return bits_per_spike(rates, targets)
