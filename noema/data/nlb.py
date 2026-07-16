@@ -40,9 +40,18 @@ def load_nlb(path, name="mc_maze", bin_ms=5, window=None, split="train"):
         dataset, dataset_name=name, trial_split=split,
         save_file=False, include_behavior=True,
     )
+    behavior = tensors.get("train_behavior")
+    if behavior is not None:
+        # Standardize velocity per dimension: raw NLB kinematics are large-scale, so
+        # an unnormalized MSE would dominate the multi-task loss. R² is unaffected.
+        import numpy as np
+        behavior = np.asarray(behavior, dtype="float32")
+        flat = behavior.reshape(-1, behavior.shape[-1])
+        behavior = (behavior - np.nanmean(flat, 0)) / (np.nanstd(flat, 0) + 1e-6)
+
     return SpikeWindows(
         tensors["train_spikes_heldin"],
         tensors["train_spikes_heldout"],
-        tensors.get("train_behavior"),
+        behavior,
         window,
     )
