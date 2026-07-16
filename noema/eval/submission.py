@@ -40,6 +40,16 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
     in_ids = torch.arange(n_hi, device=device)
     out_ids = torch.arange(n_ho, device=device) + n_hi
 
+    # Greedy-select the ensemble on the held-out val split, then predict test/train
+    # with the chosen members (weighted by pick count) — our best ensemble, honestly.
+    from .ensemble import greedy_ensemble
+    val = make_train_input_tensors(dataset, name, trial_split="val", save_file=False)
+    vh = torch.as_tensor(val["train_spikes_heldin"], dtype=torch.float32, device=device)
+    val_member = [m.cosmooth(vh, in_ids, out_ids).exp().cpu() for m in models]
+    chosen = greedy_ensemble(val_member, torch.as_tensor(val["train_spikes_heldout"], dtype=torch.float32))
+    models = [models[j] for j in chosen]
+    print(f"greedy selected {len(chosen)} picks from {len(val_member)} members", flush=True)
+
     er_hi, er_ho = _rates(models, eval_hi, in_ids, out_ids, device)
     tr_hi, tr_ho = _rates(models, train["train_spikes_heldin"], in_ids, out_ids, device)
     submission = {name: {
