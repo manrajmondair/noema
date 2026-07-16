@@ -32,7 +32,10 @@ class CrossReadout(nn.Module):
         # tokens [B,T,N,D] (observed units), queries [M,D] (held-out unit embeds) -> [B,T,M]
         B, T, N, D = tokens.shape
         M = queries.size(0)
-        q = self.q(self.qn(queries)).view(1, self.heads, M, self.head_dim).expand(B * T, -1, -1, -1)
+        # split the head axis from M *before* moving heads to the front, else the
+        # flat [M, heads*head_dim] buffer misassigns each head-slice to the wrong unit
+        q = self.q(self.qn(queries)).view(M, self.heads, self.head_dim).permute(1, 0, 2)
+        q = q.unsqueeze(0).expand(B * T, -1, -1, -1)
         kv = self.kv(self.kn(tokens)).view(B * T, N, 2, self.heads, self.head_dim).permute(2, 0, 3, 1, 4)
         o = F.scaled_dot_product_attention(q, kv[0], kv[1])          # [B*T, heads, M, d]
         return self.out(o.transpose(1, 2).reshape(B, T, M, D)).squeeze(-1)
