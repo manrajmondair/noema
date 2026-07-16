@@ -14,7 +14,7 @@ from ..data.dataset import split_trials
 from ..data.nlb import load_nlb
 from ..utils import default_device
 from .baselines import gaussian_smooth
-from .ensemble import ensemble_rates
+from .ensemble import greedy_ensemble, member_rates
 from .metrics import bits_per_spike
 
 
@@ -51,13 +51,17 @@ def main():
         models.append(model.to(device))
         print(f"  {path.split('/')[-1]}: {desc}", flush=True)
 
-    # Tune the smoothing sigma on the held-out selection set, then report once on val.
-    sel_rates, sel_tgt = ensemble_rates(models, select, device=device)
+    # Greedy-select members and tune smoothing on the held-out set; report once on val.
+    sel_r, sel_t = member_rates(models, select, device=device)
+    val_r, val_t = member_rates(models, val, device=device)
+    chosen = greedy_ensemble(sel_r, sel_t)
+    sel_avg = sum(sel_r[j] for j in chosen) / len(chosen)
+    val_avg = sum(val_r[j] for j in chosen) / len(chosen)
     sigmas = (0.0, 1.0, 1.5, 2.0, 2.5, 3.0)
-    sigma = max(sigmas, key=lambda s: bits_per_spike(gaussian_smooth(sel_rates, s) if s else sel_rates, sel_tgt))
-    val_rates, val_tgt = ensemble_rates(models, val, device=device)
-    cobps = bits_per_spike(gaussian_smooth(val_rates, sigma) if sigma else val_rates, val_tgt)
-    print(f"ensemble co_bps ({len(models)} members, val) = {cobps:.4f}  (smooth={sigma}, tuned on held-out)", flush=True)
+    sigma = max(sigmas, key=lambda s: bits_per_spike(gaussian_smooth(sel_avg, s) if s else sel_avg, sel_t))
+    cobps = bits_per_spike(gaussian_smooth(val_avg, sigma) if sigma else val_avg, val_t)
+    print(f"greedy picked {len(chosen)} of {len(models)} members", flush=True)
+    print(f"ensemble co_bps (val) = {cobps:.4f}  (smooth={sigma}, greedy+sigma tuned on held-out)", flush=True)
 
 
 if __name__ == "__main__":

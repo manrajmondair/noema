@@ -26,3 +26,23 @@ def test_ensemble_not_worse_than_worst_member():
     singles = [evaluate(m, ds)["co_bps"] for m in models]
     ensemble = ensemble_co_bps(models, ds, device=CPU)
     assert ensemble >= min(singles) - 0.05  # rate averaging never trails the worst member
+
+
+def test_greedy_ensemble_beats_naive_mean():
+    from noema.eval.ensemble import greedy_ensemble, member_rates
+    from noema.eval.metrics import bits_per_spike
+
+    torch.manual_seed(1)
+    counts, _, behavior = synthetic_batch(batch=128, steps=25, units=40, seed=1)
+    ds = SpikeWindows(counts[..., :28], counts[..., 28:], behavior)
+    loader = DataLoader(ds, batch_size=32, collate_fn=ds.collate, drop_last=True)
+    models = []
+    for _ in range(4):
+        m = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=40)
+        train(m, loader, TrainConfig(steps=50, warmup=5, lr=3e-3, ckpt=""), device=CPU)
+        models.append(m)
+
+    rates, targets = member_rates(models, ds, device=CPU)
+    chosen = greedy_ensemble(rates, targets)
+    greedy = bits_per_spike(sum(rates[j] for j in chosen) / len(chosen), targets)
+    assert greedy >= ensemble_co_bps(models, ds, device=CPU) - 0.005  # selection ≥ naive mean

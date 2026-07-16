@@ -30,6 +30,36 @@ def ensemble_rates(models, dataset, device=None, batch_size=64):
     return torch.cat(rates), torch.cat(targets)
 
 
+@torch.no_grad()
+def member_rates(models, dataset, device=None, batch_size=64):
+    """Per-member held-out rates [n_models] of [trials,T,N], with shared targets."""
+    device = device or next(models[0].parameters()).device
+    for m in models:
+        m.eval()
+    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=dataset.collate)
+    per, targets = [[] for _ in models], []
+    for batch in loader:
+        counts, uid = batch["counts"].to(device), batch["unit_ids"].to(device)
+        tgt = batch["target_unit_ids"].to(device)
+        for i, m in enumerate(models):
+            per[i].append(m.cosmooth(counts, uid, tgt).exp().cpu())
+        targets.append(batch["target_counts"])
+    return [torch.cat(p) for p in per], torch.cat(targets)
+
+
+def greedy_ensemble(rates, targets, max_size=40):
+    """Caruana greedy selection: pick members (with replacement) to maximize co-bps."""
+    chosen, best = [], float("-inf")
+    while len(chosen) < max_size:
+        scores = [bits_per_spike(sum(rates[j] for j in chosen + [i]) / (len(chosen) + 1), targets)
+                  for i in range(len(rates))]
+        i = max(range(len(scores)), key=lambda k: scores[k])
+        if scores[i] <= best + 1e-5:
+            break
+        best, _ = scores[i], chosen.append(i)
+    return chosen or [max(range(len(rates)), key=lambda i: bits_per_spike(rates[i], targets))]
+
+
 def ensemble_co_bps(models, dataset, device=None, batch_size=64, smooth=0.0):
     """Ensemble rates, optionally smoothed over time, scored as co-bps. Light
     temporal smoothing matches true (smooth) PSTHs and stacks with ensembling."""
