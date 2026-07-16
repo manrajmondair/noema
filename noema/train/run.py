@@ -54,10 +54,13 @@ def fit(args):
     val_ds = build_dataset(args, "val") if args.dataset == "nlb" else ds
     behavior_dim = ds.behavior.size(-1) if ds.behavior is not None else 0
     max_units = ds.in_ids.numel() + ds.out_ids.numel()
+    state = torch.load(args.init, map_location="cpu") if args.init else None
+    if state is not None:  # size the table to the pretrained one so its unit rows load
+        max_units = max(max_units, state["tokenizer.embed.weight"].shape[0])
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
                   heads=args.heads, max_units=max_units, behavior_dim=behavior_dim)
-    if args.init:  # warm-start the shared backbone; fresh heads stay fresh
-        model.load_state_dict(torch.load(args.init, map_location="cpu"), strict=False)
+    if state is not None:  # warm-start backbone + shared unit embeddings; fresh heads stay fresh
+        model.load_state_dict(state, strict=False)
 
     loader = DataLoader(ds, batch_size=args.batch, shuffle=True,
                         collate_fn=ds.collate, drop_last=True)
