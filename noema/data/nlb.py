@@ -7,6 +7,8 @@ Fetch a dataset first (Dandi Archive), e.g. mc_maze = dandiset 000128:
 then point `path` at the extracted NWB. Requires the `data` extra.
 """
 
+from functools import lru_cache
+
 import torch
 
 from .dataset import SpikeWindows
@@ -32,12 +34,21 @@ def _find_nwb(path):
     return (train or files)[0]
 
 
-def load_nlb(path, name="mc_maze", bin_ms=5, window=None, split="train"):
-    from nlb_tools.make_tensors import make_train_input_tensors
+@lru_cache(maxsize=2)
+def _load_resampled(path, bin_ms):
+    """Load and resample the NWB once; splits reuse it. Loading + resampling
+    dominates eval, and callers pull several splits from the same recording."""
     from nlb_tools.nwb_interface import NWBDataset
 
     dataset = NWBDataset(_find_nwb(path))
     dataset.resample(bin_ms)
+    return dataset
+
+
+def load_nlb(path, name="mc_maze", bin_ms=5, window=None, split="train"):
+    from nlb_tools.make_tensors import make_train_input_tensors
+
+    dataset = _load_resampled(path, bin_ms)
     tensors = make_train_input_tensors(
         dataset, dataset_name=name, trial_split=split,
         save_file=False, include_behavior=True,
