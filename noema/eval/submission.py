@@ -9,7 +9,6 @@ import argparse
 
 import torch
 
-from .. import Noema
 from ..data.nlb import _find_nwb
 from ..utils import default_device
 from .ensemble_run import build_from_state
