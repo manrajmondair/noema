@@ -65,7 +65,8 @@ def fit(args):
     loader = DataLoader(ds, batch_size=args.batch, shuffle=True,
                         collate_fn=ds.collate, drop_last=True)
     run = wandb_run(args)
-    train(model, loader, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt), on_log=logger(run))
+    train(model, loader, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt, eval_every=args.eval_every),
+          on_log=logger(run), val_ds=val_ds)
 
     metrics = evaluate(model, val_ds)
     if args.dataset == "nlb":
@@ -95,6 +96,7 @@ def main():
     p.add_argument("--steps", type=int, default=20_000)
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--ckpt", default="checkpoints/noema.pt")
+    p.add_argument("--eval-every", type=int, default=500, help="val co-bps checkpoint selection interval")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--wandb", action="store_true")
     args = p.parse_args()

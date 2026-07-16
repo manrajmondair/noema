@@ -23,6 +23,7 @@ class TrainConfig:
     w_sensory: float = 1.0
     amp: bool = True
     log_every: int = 50
+    eval_every: int = 0  # >0 with a val set: keep the best val co-bps checkpoint, not the last
     ckpt: str = "checkpoints/noema.pt"
 
 
@@ -42,12 +43,19 @@ def _to_device(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
 
 
-def train(model, loader, cfg, device=None, on_log=None):
+def _save(model, path):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    torch.save(model.state_dict(), path)
+
+
+def train(model, loader, cfg, device=None, on_log=None, val_ds=None):
     device = device or default_device()
     model.to(device).train()
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     amp = cfg.amp and device.type == "cuda"  # bf16 on H200: wide range, no loss scaler
 
+    select = val_ds is not None and cfg.eval_every > 0
+    best = None
     batches = _endless(loader)
     for step in range(cfg.steps):
         batch = _to_device(next(batches), device)
@@ -81,7 +89,19 @@ def train(model, loader, cfg, device=None, on_log=None):
         if on_log and step % cfg.log_every == 0:
             on_log(step, {k: v.detach().item() for k, v in out.items() if k.startswith("loss")})
 
-    if cfg.ckpt:
-        os.makedirs(os.path.dirname(cfg.ckpt) or ".", exist_ok=True)
-        torch.save(model.state_dict(), cfg.ckpt)
+        if select and step > 0 and step % cfg.eval_every == 0:
+            from ..eval.nlb import evaluate
+            cobps = evaluate(model, val_ds, device=device).get("co_bps", float("-inf"))
+            model.train()
+            if on_log:
+                on_log(step, {"loss_val_cobps": cobps})
+            if best is None or cobps > best:
+                best = cobps
+                if cfg.ckpt:
+                    _save(model, cfg.ckpt)
+
+    if select and best is not None and cfg.ckpt:
+        model.load_state_dict(torch.load(cfg.ckpt, map_location=device))  # restore best-val weights
+    elif cfg.ckpt:
+        _save(model, cfg.ckpt)
     return model
