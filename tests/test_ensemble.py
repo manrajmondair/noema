@@ -28,6 +28,23 @@ def test_ensemble_not_worse_than_worst_member():
     assert ensemble >= min(singles) - 0.05  # rate averaging never trails the worst member
 
 
+def test_build_from_state_recovers_head_count():
+    # a non-default head count must survive the checkpoint round-trip, else attention
+    # is silently repartitioned into the wrong number of heads (mechanism corrupted)
+    from noema.eval.ensemble_run import build_from_state
+
+    torch.manual_seed(0)
+    m = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=40, spatial=True, cross=True).eval()
+    counts = torch.rand(2, 6, 20)
+    in_ids, out_ids = torch.arange(20), torch.arange(8) + 20
+    ref = m.cosmooth(counts, in_ids, out_ids)
+
+    rebuilt, _ = build_from_state(m.state_dict(), max_units=40, heads=8)  # 8 is the wrong fallback
+    rebuilt.eval()
+    assert int(rebuilt.num_heads.item()) == 4
+    assert torch.allclose(rebuilt.cosmooth(counts, in_ids, out_ids), ref, atol=1e-5)
+
+
 def test_greedy_ensemble_beats_naive_mean():
     from noema.eval.ensemble import greedy_ensemble, member_rates
     from noema.eval.metrics import bits_per_spike

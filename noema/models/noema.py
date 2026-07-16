@@ -45,6 +45,10 @@ class Noema(nn.Module):
         self.teacher = copy.deepcopy(self.encoder).requires_grad_(False)
         self.mask_ratio = mask_ratio
         self.ema = ema
+        # Head count can't be read back from weight shapes (qkv is dim->k*dim regardless),
+        # so persist it: a checkpoint reloaded with the wrong head count silently scrambles
+        # attention. Lets build_from_state reconstruct the exact model.
+        self.register_buffer("num_heads", torch.tensor(heads), persistent=True)
 
     def _represent(self, counts, unit_ids):
         # returns (per-unit tokens or None, pooled latent z [B,T,dim])

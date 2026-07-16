@@ -20,6 +20,8 @@ from .metrics import bits_per_spike
 
 def build_from_state(state, max_units, heads=8):
     dim = state["tokenizer.embed.weight"].shape[1]
+    if "num_heads" in state:  # checkpoints self-describe their head count; older ones fall back
+        heads = int(state["num_heads"].item())
     spatial = any(k.startswith("encoder.spatial.") for k in state)
     cross = any(k.startswith("cross.") for k in state)
     prefix = "encoder.temporal." if spatial else "encoder.blocks."
