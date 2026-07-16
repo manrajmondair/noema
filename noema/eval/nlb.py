@@ -55,4 +55,14 @@ def official_velocity_r2(model, train_ds, val_ds, device=None):
     model.eval()
     tr_rates, tr_vel = _infer_rates(model, train_ds, device)
     ev_rates, ev_vel = _infer_rates(model, val_ds, device)
+    # Score against raw kinematics (what the leaderboard uses), not the per-split
+    # standardized velocity — R² is only affine-invariant under a shared target frame.
+    tr_vel, ev_vel = _raw_behavior(tr_vel, train_ds), _raw_behavior(ev_vel, val_ds)
     return float(fit_and_eval_decoder(tr_rates, tr_vel, ev_rates, ev_vel))
+
+
+def _raw_behavior(vel, ds):
+    if getattr(ds, "behavior_stats", None) is None:
+        return vel
+    mean, std = (s.numpy() for s in ds.behavior_stats)
+    return vel * std + mean

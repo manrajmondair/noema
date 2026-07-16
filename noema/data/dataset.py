@@ -21,7 +21,9 @@ def _trialize(x, window):
 
 class SpikeWindows(Dataset):
     def __init__(self, heldin, heldout=None, behavior=None, actions=None, context=None,
-                 window=None, unit_ids=None, session=None):
+                 window=None, unit_ids=None, session=None, behavior_stats=None):
+        # (mean, std) used to standardize behavior, so metrics can recover raw kinematics.
+        self.behavior_stats = behavior_stats
         self.heldin = _trialize(torch.as_tensor(heldin, dtype=torch.float32), window)
         self.heldout = _trialize(_as_f32(heldout), window)
         self.behavior = _trialize(_as_f32(behavior), window)
@@ -73,5 +75,6 @@ def split_trials(ds, frac, seed=0):
     def carve(idx):
         pick = lambda t: t[idx] if t is not None else None
         return SpikeWindows(ds.heldin[idx], pick(ds.heldout), pick(ds.behavior),
-                            actions=pick(ds.actions), unit_ids=ds.in_ids)
+                            actions=pick(ds.actions), unit_ids=ds.in_ids,
+                            behavior_stats=ds.behavior_stats)
     return carve(perm[:cut]), carve(perm[cut:])

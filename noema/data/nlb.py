@@ -7,6 +7,8 @@ Fetch a dataset first (Dandi Archive), e.g. mc_maze = dandiset 000128:
 then point `path` at the extracted NWB. Requires the `data` extra.
 """
 
+import torch
+
 from .dataset import SpikeWindows
 
 # NLB dataset name -> Dandi id, for reference/tooling.
@@ -40,18 +42,22 @@ def load_nlb(path, name="mc_maze", bin_ms=5, window=None, split="train"):
         dataset, dataset_name=name, trial_split=split,
         save_file=False, include_behavior=True,
     )
-    behavior = tensors.get("train_behavior")
+    behavior, stats = tensors.get("train_behavior"), None
     if behavior is not None:
         # Standardize velocity per dimension: raw NLB kinematics are large-scale, so
-        # an unnormalized MSE would dominate the multi-task loss. R² is unaffected.
+        # an unnormalized MSE would dominate the multi-task loss. Keep the (mean, std)
+        # so the leaderboard R² can score against the raw kinematics it expects.
         import numpy as np
         behavior = np.asarray(behavior, dtype="float32")
         flat = behavior.reshape(-1, behavior.shape[-1])
-        behavior = (behavior - np.nanmean(flat, 0)) / (np.nanstd(flat, 0) + 1e-6)
+        mean, std = np.nanmean(flat, 0), np.nanstd(flat, 0) + 1e-6
+        behavior = (behavior - mean) / std
+        stats = (torch.as_tensor(mean, dtype=torch.float32), torch.as_tensor(std, dtype=torch.float32))
 
     return SpikeWindows(
         tensors["train_spikes_heldin"],
         tensors["train_spikes_heldout"],
         behavior,
         window=window,
+        behavior_stats=stats,
     )
