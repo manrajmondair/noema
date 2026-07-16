@@ -37,7 +37,7 @@ for name in "${@:-mc_maze}"; do
   dir="data/$name"
   if [ ! -d "$dir" ]; then
     mkdir -p data
-    dandi download "DANDI:$(dandiset "$name")/draft" -o data/
+    dandi download "DANDI:$(dandiset "$name")/draft" -o data/ --existing SKIP
     mv "data/$(dandiset "$name")" "$dir"
   fi
 done
