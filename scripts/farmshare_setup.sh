@@ -22,8 +22,10 @@ echo "using $("$PY" --version)"
 
 [ -d .venv ] || "$PY" -m venv .venv
 source .venv/bin/activate
-pip install -q --upgrade pip
-pip install -q -e ".[data,train]"               # torch pulls the default CUDA wheel here
+pip install -q --upgrade pip setuptools wheel
+pip install -q -e ".[train]"                    # torch (CUDA wheel) + hydra + wandb + tqdm
+pip install -q numpy scipy pandas h5py pynwb dandi   # modern sci stack, all prebuilt for 3.12
+pip install -q --no-deps nlb_tools              # its stale pandas pin would force a source build
 
 for name in "${@:-mc_maze}"; do
   dir="data/$name"
