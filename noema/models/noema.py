@@ -53,7 +53,14 @@ class Noema(nn.Module):
         loss_mask, observed = None, counts
         if self.training and self.mask_ratio > 0:
             loss_mask = (torch.rand_like(counts) < self.mask_ratio).float()
-            observed = counts * (1 - loss_mask)
+            # BERT 80/10/10 corruption of masked cells: zeroing all of them would make
+            # a masked cell indistinguishable from a true zero-count cell (log1p(0)=0),
+            # leaking the mask. 80% -> 0, 10% -> a random plausible count, 10% kept.
+            mode = torch.rand_like(counts)
+            rand = loss_mask * ((mode >= 0.8) & (mode < 0.9)).float()
+            zero = loss_mask * (mode < 0.8).float()
+            shuffled = counts.reshape(-1)[torch.randperm(counts.numel(), device=counts.device)].reshape_as(counts)
+            observed = counts * (1 - zero - rand) + shuffled * rand
 
         z = self.encode(observed, unit_ids)
         out = {"z": z, "rate": self.tokenizer.decode(z, unit_ids)}
