@@ -15,5 +15,5 @@ cd "$SLURM_SUBMIT_DIR"
 source "$HOME/miniforge3/etc/profile.d/conda.sh" && conda activate noema
 
 DATASET="${DATASET:-mc_maze}"
-CKPTS=$(ls checkpoints/${PREFIX:-noema}-*.pt | paste -sd,)
+CKPTS=$(ls checkpoints/${PREFIX:-noema}*.pt | paste -sd,)
 python -m noema.eval.ensemble_run --ckpts "$CKPTS" --name "$DATASET" --path "data/$DATASET"
