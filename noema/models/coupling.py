@@ -15,7 +15,7 @@ from torch import nn
 
 
 class SensoryEncoder(nn.Module):
-    def __init__(self, context_dim, dim, depth, heads=None, kernel=5):
+    def __init__(self, context_dim, dim, depth, kernel=5):
         super().__init__()
         self.proj = nn.Linear(context_dim, dim)
         self.convs = nn.ModuleList(nn.Conv1d(dim, dim, kernel, dilation=2**i) for i in range(depth))
