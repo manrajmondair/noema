@@ -24,7 +24,7 @@ def ensemble_rates(models, dataset, device=None, batch_size=64):
     for batch in loader:
         counts, uid = batch["counts"].to(device), batch["unit_ids"].to(device)
         tgt = batch["target_unit_ids"].to(device)
-        member = [m.tokenizer.decode(m.encode(counts, uid), tgt).exp() for m in models]
+        member = [m.cosmooth(counts, uid, tgt).exp() for m in models]
         rates.append(torch.stack(member).mean(0).cpu())
         targets.append(batch["target_counts"])
     return torch.cat(rates), torch.cat(targets)

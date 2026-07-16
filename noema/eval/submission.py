@@ -18,7 +18,7 @@ from .ensemble_run import build_from_state
 def _rates(models, spikes, in_ids, out_ids, device):
     spikes = torch.as_tensor(spikes, dtype=torch.float32, device=device)
     hi = torch.stack([m.tokenizer.decode(m.encode(spikes, in_ids), in_ids).exp() for m in models]).mean(0)
-    ho = torch.stack([m.tokenizer.decode(m.encode(spikes, in_ids), out_ids).exp() for m in models]).mean(0)
+    ho = torch.stack([m.cosmooth(spikes, in_ids, out_ids).exp() for m in models]).mean(0)
     return hi.cpu().numpy(), ho.cpu().numpy()
 
 

@@ -9,7 +9,7 @@ from torch import nn
 from .adversary import SessionAdversary
 from .coupling import SensoryEncoder
 from .encoder import SpatioTemporalEncoder, TemporalEncoder
-from .heads import BehaviorHead
+from .heads import BehaviorHead, CrossReadout
 from .tokenizer import PopulationTokenizer
 from .world_model import WorldModel
 
@@ -31,7 +31,7 @@ def latent_prediction_loss(pred, target):
 class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
-                 adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0):
+                 adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False):
         super().__init__()
         self.spatial = spatial
         self.neuron_mask_ratio = neuron_mask_ratio
@@ -39,6 +39,7 @@ class Noema(nn.Module):
         self.encoder = (SpatioTemporalEncoder if spatial else TemporalEncoder)(dim, enc_depth, heads)
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
         self.behavior = BehaviorHead(dim, behavior_dim) if behavior_dim else None
+        self.cross = CrossReadout(dim, heads) if (spatial and cross) else None  # per-unit co-smoothing
         self.sensory = SensoryEncoder(context_dim, dim, max(2, wm_depth), heads) if context_dim else None
         self.adversary = SessionAdversary(dim, sessions, adv_weight) if sessions else None
         self.teacher = copy.deepcopy(self.encoder).requires_grad_(False)
@@ -59,6 +60,18 @@ class Noema(nn.Module):
         if self.spatial:
             return self.teacher(self.tokenizer.encode_units(counts, unit_ids)).mean(2)
         return self.teacher(self.tokenizer.encode(counts, unit_ids))
+
+    def cosmooth(self, counts, unit_ids, target_unit_ids):
+        """Log-rates for held-out (co-smoothing) units, given only held-in spikes."""
+        if self.cross is not None:
+            tokens = self.encoder(self.tokenizer.encode_units(counts, unit_ids))
+            return self.cross(tokens, self.tokenizer.readout(target_unit_ids))
+        return self.tokenizer.decode(self.encode(counts, unit_ids), target_unit_ids)
+
+    def _cosmooth_from(self, tokens, z, target_unit_ids):
+        if self.cross is not None:
+            return self.cross(tokens, self.tokenizer.readout(target_unit_ids))
+        return self.tokenizer.decode(z, target_unit_ids)
 
     def forward(self, counts, unit_ids, actions=None, behavior=None,
                 target_counts=None, target_unit_ids=None, session=None, context=None):
@@ -83,7 +96,7 @@ class Noema(nn.Module):
 
         # Co-smoothing: infer the firing of held-out units the encoder never saw.
         if target_counts is not None:
-            out["loss_cosmooth"] = poisson_nll(self.tokenizer.decode(z, target_unit_ids), target_counts)
+            out["loss_cosmooth"] = poisson_nll(self._cosmooth_from(tokens, z, target_unit_ids), target_counts)
 
         # Random-neuron co-smoothing: hide a random subset of input units and predict
         # them from the rest, so the metric objective (predict any held-out unit) is

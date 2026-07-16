@@ -14,9 +14,10 @@ def evaluate(model, dataset, device=None, batch_size=64):
 
     rates, targets, vel_pred, vel_true = [], [], [], []
     for batch in loader:
-        z = model.encode(batch["counts"].to(device), batch["unit_ids"].to(device))
+        counts, uid = batch["counts"].to(device), batch["unit_ids"].to(device)
+        z = model.encode(counts, uid)
         if "target_counts" in batch:
-            rate = model.tokenizer.decode(z, batch["target_unit_ids"].to(device)).exp()
+            rate = model.cosmooth(counts, uid, batch["target_unit_ids"].to(device)).exp()
             rates.append(rate.cpu())
             targets.append(batch["target_counts"])
         if model.behavior is not None and "behavior" in batch:
