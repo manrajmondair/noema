@@ -23,10 +23,13 @@ def _rates(models, spikes, in_ids, out_ids, device):
 
 
 def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
+    import os
+
     from nlb_tools.make_tensors import make_eval_input_tensors, make_train_input_tensors, save_to_h5
     from nlb_tools.nwb_interface import NWBDataset
 
-    dataset = NWBDataset(_find_nwb(path))
+    # load the directory (train + test NWB merged) so the test trial_split is present
+    dataset = NWBDataset(os.path.dirname(_find_nwb(path)))
     dataset.resample(bin_ms)
     eval_hi = make_eval_input_tensors(dataset, name, trial_split="test", save_file=False)["eval_spikes_heldin"]
     train = make_train_input_tensors(dataset, name, trial_split="train", save_file=False)
