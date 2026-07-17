@@ -123,13 +123,13 @@ def main():
         raise ValueError(f"only {len(sessions)} sessions; cannot hold out {args.held_out}")
     train_sessions, held_out = sessions[: -args.held_out], sessions[-args.held_out:]
     if args.input_norm:
-        # Divide each channel by its own session mean firing: equalizes per-channel gain
-        # drift across recording days, keeps counts non-negative for log1p. Unsupervised
-        # (uses only neural), so it applies to unseen sessions too.
-        def _norm(n):
-            return n / (n.mean(0, keepdims=True) + 1e-3)
-        train_sessions = [(nm, _norm(n), k, m) for nm, n, k, m in train_sessions]
-        held_out = [(nm, _norm(n), k, m) for nm, n, k, m in held_out]
+        # Divide each channel by its mean firing: equalizes per-channel gain drift, keeps
+        # counts non-negative for log1p. For unseen sessions the normalizer is estimated
+        # from the calibration portion ONLY (causal, no eval-split statistics leak).
+        def _norm(n, ref):
+            return n / (ref.mean(0, keepdims=True) + 1e-3)
+        train_sessions = [(nm, _norm(n, n), k, m) for nm, n, k, m in train_sessions]
+        held_out = [(nm, _norm(n, n[: int(len(n) * args.calib_frac)]), k, m) for nm, n, k, m in held_out]
     print(f"train on {len(train_sessions)} sessions, transfer to {len(held_out)} unseen: "
           f"{[s for s, *_ in held_out]}", flush=True)
 
