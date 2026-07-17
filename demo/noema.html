@@ -260,7 +260,7 @@ function drawRaster() {
   rx.putImageData(img, 0, 0);
 }
 
-let head = [0, 0];
+let head = [0, 0], alignEMA = null;
 function drawPath() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = pathC.clientWidth, H = 200;
@@ -290,14 +290,13 @@ function drawPath() {
   px.fillStyle = '#D5DCE7'; px.beginPath(); px.arc(X, Y, 2.6, 0, Math.PI * 2); px.fill();
   px.strokeStyle = 'rgba(88,183,212,.55)'; px.lineWidth = 1; px.beginPath(); px.arc(X, Y, 5, 0, Math.PI * 2); px.stroke();
   // intent vs decoded agreement (cosine of recent decoded velocity with the intent)
-  let align = null;
-  if (n > 5 && gm > 0.05) {
-    const dv0 = path[n - 1][0] - path[n - 5][0], dv1 = path[n - 1][1] - path[n - 5][1], dm = Math.hypot(dv0, dv1);
-    if (dm > 1e-3) align = (dv0 * action[0] + dv1 * action[1]) / (dm * gm);
+  if (n > 14 && gm > 0.05) {
+    const dv0 = path[n - 1][0] - path[n - 14][0], dv1 = path[n - 1][1] - path[n - 14][1], dm = Math.hypot(dv0, dv1);
+    if (dm > 1e-3) { const c = (dv0 * action[0] + dv1 * action[1]) / (dm * gm); alignEMA = alignEMA == null ? c : alignEMA * 0.9 + c * 0.1; }
   }
   px.font = '10px ui-monospace, "SF Mono", Menlo, monospace'; px.textBaseline = 'top';
-  px.fillStyle = align == null ? '#4A5468' : '#7E8AA0';
-  px.fillText('align ' + (align == null ? '\u2014' : align.toFixed(2)), 2, 2);
+  px.fillStyle = alignEMA == null ? '#4A5468' : '#7E8AA0';
+  px.fillText('align ' + (alignEMA == null ? '\u2014' : Math.max(-1, Math.min(1, alignEMA)).toFixed(2)), 2, 2);
 }
 
 const pad = document.getElementById('pad'), knob = document.getElementById('knob');
@@ -320,7 +319,7 @@ pad.addEventListener('pointermove', e => dragging && setAction(e));
 pad.addEventListener('pointerup', () => { dragging = false; pad.classList.remove('grab'); });
 document.getElementById('reset').onclick = () => {
   z = M.seed.z.map(r => r.slice()); a = M.seed.actions.map(r => r.slice());
-  pos = [0, 0]; head = [0, 0]; path.length = 0; history.length = 0; action = [0, 0];
+  pos = [0, 0]; head = [0, 0]; alignEMA = null; path.length = 0; history.length = 0; action = [0, 0];
   knob.style.left = '92px'; knob.style.top = '92px'; vector.style.width = '0px';
   readout.classList.add('idle'); readout.innerHTML = '\u03B8 \u2014\u00B0 \u00B7 \u2016v\u2016 \u2014';
 };
