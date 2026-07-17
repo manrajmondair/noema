@@ -31,10 +31,12 @@ def latent_prediction_loss(pred, target):
 class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
-                 adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False):
+                 adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False,
+                 multistep=0):
         super().__init__()
         self.spatial = spatial
         self.neuron_mask_ratio = neuron_mask_ratio
+        self.multistep = multistep  # >1 adds a multi-step rollout loss (open-loop drift resistance)
         self.tokenizer = PopulationTokenizer(dim, max_units)
         self.encoder = (SpatioTemporalEncoder if spatial else TemporalEncoder)(dim, enc_depth, heads)
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
@@ -122,6 +124,16 @@ class Noema(nn.Module):
         # Anchor the forecast in observation space: the predicted next latent must
         # decode to the next bin's firing. This is what makes rollouts faithful.
         out["loss_forecast"] = poisson_nll(self.tokenizer.decode(pred[:, :-1], unit_ids), counts[:, 1:])
+
+        # Multi-step rollout: keep predicting from the model's OWN predicted latents and
+        # match each future bin's firing. Training on its own rollout (not the clean
+        # encoding) is what teaches open-loop rollouts to resist drift over the horizon.
+        if self.multistep > 1 and actions is None and counts.size(1) > self.multistep:
+            zk, ms = pred, 0.0
+            for k in range(2, self.multistep + 1):
+                zk = self.world(zk, None)
+                ms = ms + poisson_nll(self.tokenizer.decode(zk[:, :-k], unit_ids), counts[:, k:])
+            out["loss_multistep"] = ms / (self.multistep - 1)
 
         if self.behavior is not None and behavior is not None:
             out["loss_behavior"] = F.mse_loss(self.behavior(z), behavior)

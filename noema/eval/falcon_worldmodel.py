@@ -70,6 +70,7 @@ def main():
     p.add_argument("--batch", type=int, default=64)
     p.add_argument("--horizon", type=int, default=10)
     p.add_argument("--w-forecast", type=float, default=3.0, help="up-weight the observation-space forecast")
+    p.add_argument("--multistep", type=int, default=0, help=">1 adds a multi-step rollout loss (drift resistance)")
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -84,7 +85,7 @@ def main():
 
     # world model matters here, so give it depth and weight the forecast/JEPA terms
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth, heads=8,
-                  max_units=cfg.n_channels).to(device)
+                  max_units=cfg.n_channels, multistep=args.multistep).to(device)
 
     def log(step, d):
         if "loss_forecast" in d and step % 1000 == 0:
