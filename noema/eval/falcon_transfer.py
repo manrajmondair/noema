@@ -52,20 +52,23 @@ def _latent_stats(model, neural, window, device):
     return z.mean(0), z.std(0) + 1e-4
 
 
-def _coral_transform(train_z, unseen_z, device, eps=1e-3):
-    """CORAL: whiten the unseen latents and recolor to the training covariance, so the
-    full second-order statistics match — closed-form, no adversarial instability."""
+def _coral_transform(train_z, unseen_z, device, eps=1e-3, shrink=1.0):
+    """CORAL: whiten the unseen latents and recolor to the training covariance so the
+    full second-order statistics match — closed-form, no adversarial instability. A full
+    transform breaks the fixed decoder, so `shrink` blends the alignment toward identity
+    (shrink=0 -> no change, 1 -> full CORAL), keeping the map near the decodable manifold."""
     dim = train_z.shape[1]
     tm, um = train_z.mean(0), unseen_z.mean(0)
 
-    def msqrt(z, mean, inv):
+    def msqrt(z, inv):
         c = torch.cov(z.T) + eps * torch.eye(dim)
         val, vec = torch.linalg.eigh(c)
         val = val.clamp_min(eps)
         d = val.rsqrt() if inv else val.sqrt()
         return (vec * d) @ vec.T
 
-    a = (msqrt(unseen_z, um, inv=True) @ msqrt(train_z, tm, inv=False)).to(device)
+    a = msqrt(unseen_z, inv=True) @ msqrt(train_z, inv=False)
+    a = ((1 - shrink) * torch.eye(dim) + shrink * a).to(device)
     tm, um = tm.to(device), um.to(device)
     return lambda zl: (zl - um) @ a + tm
 
@@ -107,6 +110,7 @@ def main():
                    help="NoMAD-style: match each unseen session's latent moments to the training distribution")
     p.add_argument("--coral-align", action="store_true",
                    help="CORAL: match full latent covariance (whiten-recolor) of each unseen session to training")
+    p.add_argument("--coral-shrink", type=float, default=1.0, help="blend CORAL toward identity (0=off, 1=full)")
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -171,7 +175,8 @@ def main():
         me = None if m is None else m[cut:]
         transform = None
         if args.coral_align and cut > args.window * 4:
-            transform = _coral_transform(train_z, _latents(model, n[:cut], args.window, device), device)
+            transform = _coral_transform(train_z, _latents(model, n[:cut], args.window, device),
+                                         device, shrink=args.coral_shrink)
         elif args.latent_align and cut > args.window * 4:
             um, us = (x.to(device) for x in _latent_stats(model, n[:cut], args.window, device))
             transform = (lambda zl, a=um, b=us: (zl - a) / b * train_ls + train_lm)
