@@ -29,17 +29,17 @@ def latent_prediction_loss(pred, target):
 
 
 def contrastive_loss(pred, target, temp=0.1):
-    # Per-trial InfoNCE over time: each timestep's masked online latent must match its
-    # own clean EMA-teacher latent, with the trial's other timesteps as negatives. This
-    # forces a temporally discriminative representation (the STNDT contrastive ingredient),
-    # a stronger regularizer than the cosine target alone since it also repels confusable
-    # neighboring states rather than only attracting the positive.
-    pred = F.normalize(pred, dim=-1)
+    # InfoNCE across the batch at each timestep (the SimCLR/STNDT form): a trial's masked
+    # online latent must match its own clean EMA-teacher latent, against the OTHER trials'
+    # latents at the same time as negatives. Contrasting trials (which genuinely differ in
+    # firing) aligns with the task's condition structure — unlike contrasting timesteps
+    # within a trial, which forces apart correlated states and fights the linear rate readout.
+    pred = F.normalize(pred, dim=-1)              # [B,T,D]
     target = F.normalize(target.detach(), dim=-1)
-    logits = torch.einsum("btd,bsd->bts", pred, target) / temp  # [B,T,T]
-    seq = pred.size(1)
-    labels = torch.arange(seq, device=pred.device).expand(pred.size(0), seq).reshape(-1)
-    return F.cross_entropy(logits.reshape(-1, seq), labels)
+    batch = pred.size(0)
+    logits = torch.einsum("btd,ctd->tbc", pred, target) / temp  # [T,B,B]
+    labels = torch.arange(batch, device=pred.device).expand(pred.size(1), batch).reshape(-1)
+    return F.cross_entropy(logits.reshape(-1, batch), labels)
 
 
 class Noema(nn.Module):
