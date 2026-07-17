@@ -66,8 +66,14 @@ def main():
 
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=2, heads=8,
                   max_units=cfg.n_channels, behavior_dim=cfg.out_dim).to(device)
+
+    def log(step, d):
+        if "loss_behavior" in d and step % 500 == 0:
+            total = sum(v for k, v in d.items() if k.startswith("loss"))
+            print(f"step {step:5d} loss_behavior={d['loss_behavior']:.4f} total={total:.3f}", flush=True)
+
     train(model, loader, TrainConfig(steps=args.steps, warmup=100, lr=args.lr, w_behavior=args.w_behavior,
-                                     ckpt=""), device=device)
+                                     ckpt=""), device=device, on_log=log)
 
     vmean_t = torch.as_tensor(vmean, dtype=torch.float32, device=device)
     vstd_t = torch.as_tensor(vstd, dtype=torch.float32, device=device)
