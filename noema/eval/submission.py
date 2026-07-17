@@ -47,6 +47,28 @@ def _rates(models, spikes, in_ids, out_ids, device):
     return torch.cat(his).numpy(), torch.cat(hos).numpy()
 
 
+@torch.no_grad()
+def _forward(models, spikes, in_ids, out_ids, device, fp_steps):
+    """Forward-prediction rates: roll the world model open-loop fp_steps past each trial
+    and decode the imagined held-in/held-out firing (the fp-bps target). The rollout is
+    in the pooled latent, so both readouts use the pooled decode."""
+    spikes = torch.as_tensor(spikes, dtype=torch.float32)
+    hif, hof = [], []
+    for i in range(0, spikes.size(0), _BATCH):
+        s = spikes[i:i + _BATCH].to(device)
+        hi_m, ho_m = [], []
+        for m in models:
+            z = m.encode(s, in_ids)
+            for _ in range(fp_steps):
+                z = torch.cat([z, m.world(z, None)[:, -1:]], dim=1)
+            fwd = z[:, -fp_steps:]
+            hi_m.append(m.tokenizer.decode(fwd, in_ids).exp())
+            ho_m.append(m.tokenizer.decode(fwd, out_ids).exp())
+        hif.append(torch.stack(hi_m).mean(0).cpu())
+        hof.append(torch.stack(ho_m).mean(0).cpu())
+    return torch.cat(hif).numpy(), torch.cat(hof).numpy()
+
+
 def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
     import os
 
@@ -97,8 +119,20 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
         "eval_rates_heldin": er_hi, "eval_rates_heldout": er_ho,
         "train_rates_heldin": tr_hi, "train_rates_heldout": tr_ho,
     }}
+
+    # Forward-prediction rates (for fp-bps): roll the world model past each trial.
+    from nlb_tools.make_tensors import PARAMS
+    fp_steps = int(PARAMS[name]["fp_len"] // bin_ms)
+    ef_hi, ef_ho = (smooth(r) for r in _forward(models, eval_hi, in_ids, out_ids, device, fp_steps))
+    tf_hi, tf_ho = (smooth(r) for r in _forward(models, train["train_spikes_heldin"], in_ids, out_ids, device, fp_steps))
+    submission[name].update({
+        "eval_rates_heldin_forward": ef_hi, "eval_rates_heldout_forward": ef_ho,
+        "train_rates_heldin_forward": tf_hi, "train_rates_heldout_forward": tf_ho,
+    })
+
     save_to_h5(submission, out_h5, overwrite=True)
-    print(f"wrote {out_h5}: {er_ho.shape[0]} test trials, {n_ho} held-out neurons", flush=True)
+    print(f"wrote {out_h5}: {er_ho.shape[0]} test trials, {n_ho} held-out neurons, "
+          f"fp_steps={fp_steps}", flush=True)
 
 
 def main():
