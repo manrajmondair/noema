@@ -14,12 +14,30 @@ from ..utils import default_device
 from .ensemble_run import build_from_state
 
 
+# Batch over trials: the spatial members build per-unit token tensors
+# [trials, T, units, dim] whose size explodes if the whole split is run at once.
+_BATCH = 16
+
+
+@torch.no_grad()
+def _cosmooth(models, spikes, in_ids, out_ids, device):
+    """Mean held-out rates across models, in trial batches."""
+    spikes = torch.as_tensor(spikes, dtype=torch.float32)
+    out = [torch.stack([m.cosmooth(spikes[i:i + _BATCH].to(device), in_ids, out_ids).exp()
+                        for m in models]).mean(0).cpu()
+           for i in range(0, spikes.size(0), _BATCH)]
+    return torch.cat(out)
+
+
 @torch.no_grad()
 def _rates(models, spikes, in_ids, out_ids, device):
-    spikes = torch.as_tensor(spikes, dtype=torch.float32, device=device)
-    hi = torch.stack([m.tokenizer.decode(m.encode(spikes, in_ids), in_ids).exp() for m in models]).mean(0)
-    ho = torch.stack([m.cosmooth(spikes, in_ids, out_ids).exp() for m in models]).mean(0)
-    return hi.cpu().numpy(), ho.cpu().numpy()
+    spikes = torch.as_tensor(spikes, dtype=torch.float32)
+    his, hos = [], []
+    for i in range(0, spikes.size(0), _BATCH):
+        s = spikes[i:i + _BATCH].to(device)
+        his.append(torch.stack([m.tokenizer.decode(m.encode(s, in_ids), in_ids).exp() for m in models]).mean(0).cpu())
+        hos.append(torch.stack([m.cosmooth(s, in_ids, out_ids).exp() for m in models]).mean(0).cpu())
+    return torch.cat(his).numpy(), torch.cat(hos).numpy()
 
 
 def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
@@ -47,8 +65,7 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
     from .ensemble import greedy_ensemble
     from .metrics import bits_per_spike
     val = make_train_input_tensors(dataset, name, trial_split="val", save_file=False)
-    vh = torch.as_tensor(val["train_spikes_heldin"], dtype=torch.float32, device=device)
-    val_member = [m.cosmooth(vh, in_ids, out_ids).exp().cpu() for m in models]
+    val_member = [_cosmooth([m], val["train_spikes_heldin"], in_ids, out_ids, device) for m in models]
     val_ho = torch.as_tensor(val["train_spikes_heldout"], dtype=torch.float32)
     chosen = greedy_ensemble(val_member, val_ho)
     models = [models[j] for j in chosen]
