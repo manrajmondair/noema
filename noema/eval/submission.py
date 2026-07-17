@@ -137,7 +137,7 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False)
 
     save_to_h5(submission, out_h5, overwrite=True)
     print(f"wrote {out_h5}: {er_ho.shape[0]} test trials, {n_ho} held-out neurons, "
-          f"fp_steps={fp_steps}", flush=True)
+          f"forward={'yes' if forward else 'no'}", flush=True)
 
 
 def main():
