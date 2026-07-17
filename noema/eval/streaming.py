@@ -9,12 +9,15 @@ import torch
 
 
 class StreamingDecoder:
-    def __init__(self, model, unit_ids, window=50, device=None):
+    def __init__(self, model, unit_ids, window=50, device=None, latent_transform=None):
         self.model = model.eval()
         self.window = window
         self.device = device or next(model.parameters()).device
         self.unit_ids = torch.as_tensor(unit_ids, device=self.device)
         self.buffer = None
+        # optional latent-space alignment applied to the current state before decoding
+        # (e.g. matching an unseen session's latent distribution to the training one)
+        self.latent_transform = latent_transform
 
     def reset(self, batch_size=1):
         self.buffer = torch.zeros(batch_size, self.window, self.unit_ids.numel(), device=self.device)
@@ -27,4 +30,7 @@ class StreamingDecoder:
             self.reset(obs.size(0))
         self.buffer = torch.cat([self.buffer[:, 1:], obs[:, None]], dim=1)  # roll in the new bin
         z = self.model.encode(self.buffer, self.unit_ids)
-        return self.model.behavior(z[:, -1])
+        zl = z[:, -1]
+        if self.latent_transform is not None:
+            zl = self.latent_transform(zl)
+        return self.model.behavior(zl)

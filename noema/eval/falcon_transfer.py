@@ -37,11 +37,24 @@ def _load(pattern, task):
 
 
 @torch.no_grad()
-def _score(model, neural, kin, mask, window, vmean, vstd, device):
+def _latent_stats(model, neural, window, device):
+    """Per-dimension mean/std of the encoder's last-position latent over a session."""
+    ds = SpikeWindows(neural, window=window)
+    zs = []
+    for b in DataLoader(ds, batch_size=64, collate_fn=ds.collate):
+        z = model.encode(b["counts"].to(device), b["unit_ids"].to(device))
+        zs.append(z[:, -1].cpu())
+    z = torch.cat(zs)
+    return z.mean(0), z.std(0) + 1e-4
+
+
+@torch.no_grad()
+def _score(model, neural, kin, mask, window, vmean, vstd, device, latent_transform=None):
     """Stream one bin at a time; variance-weighted R^2 on eval-mask timesteps."""
     from sklearn.metrics import r2_score
 
-    stream = StreamingDecoder(model, torch.arange(neural.shape[1]), window, device)
+    stream = StreamingDecoder(model, torch.arange(neural.shape[1]), window, device,
+                              latent_transform=latent_transform)
     stream.reset(1)
     pred = np.empty_like(kin)
     for t in range(neural.shape[0]):
@@ -68,6 +81,8 @@ def main():
     p.add_argument("--adv-weight", type=float, default=1.0)
     p.add_argument("--input-norm", action="store_true",
                    help="per-session per-channel gain normalization (equalizes electrode drift, log1p-safe)")
+    p.add_argument("--latent-align", action="store_true",
+                   help="NoMAD-style: match each unseen session's latent moments to the training distribution")
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -112,23 +127,33 @@ def main():
 
     import copy
 
+    train_lm = train_ls = None
+    if args.latent_align:  # reference latent distribution from a few training sessions
+        ref = np.concatenate([n for _, n, _, _ in train_sessions[:4]], 0)
+        train_lm, train_ls = (x.to(device) for x in _latent_stats(model, ref, args.window, device))
+
     seen = _score(model, *train_sessions[-1][1:], args.window, vmean, vstd, device)
     print(f"seen-session R2 = {seen:.3f}", flush=True)
 
     # Score each unseen session on its held-out (eval) portion. Zero-shot uses the
-    # base model; few-shot first adapts a copy on the session's calibration portion.
+    # base model; latent-align maps its latents to the training moments; few-shot
+    # additionally adapts a copy on the session's calibration portion.
     zero, few = [], []
     for _, n, k, m in held_out:
         cut = int(len(n) * args.calib_frac)
         me = None if m is None else m[cut:]
-        zero.append(_score(model, n[cut:], k[cut:], me, args.window, vmean, vstd, device))
+        transform = None
+        if args.latent_align and cut > args.window * 4:
+            um, us = (x.to(device) for x in _latent_stats(model, n[:cut], args.window, device))
+            transform = (lambda zl, a=um, b=us: (zl - a) / b * train_ls + train_lm)
+        zero.append(_score(model, n[cut:], k[cut:], me, args.window, vmean, vstd, device, transform))
         if args.adapt_steps > 0 and cut > args.window * 4:
             adapted = copy.deepcopy(model)
             cds = SpikeWindows(n[:cut], behavior=(k[:cut] - vmean) / vstd, window=args.window)
             cl = DataLoader(cds, batch_size=args.batch, shuffle=True, collate_fn=cds.collate, drop_last=True)
             train(adapted, cl, TrainConfig(steps=args.adapt_steps, warmup=10, lr=args.adapt_lr,
                                            w_behavior=args.w_behavior, ckpt=""), device=device)
-            few.append(_score(adapted, n[cut:], k[cut:], me, args.window, vmean, vstd, device))
+            few.append(_score(adapted, n[cut:], k[cut:], me, args.window, vmean, vstd, device, transform))
     print(f"zero-shot cross-session R2 = {np.mean(zero):.3f} +/- {np.std(zero):.3f}  {[round(r, 3) for r in zero]}", flush=True)
     if few:
         print(f"few-shot ({args.adapt_steps}-step) cross-session R2 = {np.mean(few):.3f} +/- {np.std(few):.3f}  "
