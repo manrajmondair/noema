@@ -62,7 +62,7 @@ Stage 1 places each dataset's neurons in a disjoint slice of one embedding table
 
 A forward model buys more than offline accuracy:
 
-- **Streaming / online decode** — `eval/streaming.py` decodes one spike bin at a time over a rolling window; `eval/falcon.py` wraps it in the FALCON `BCIDecoder` interface (verified against the challenge package).
+- **Streaming / online decode** — `eval/streaming.py` decodes one spike bin at a time over a rolling window; `eval/falcon.py` wraps it in the FALCON `BCIDecoder` interface. `eval/falcon_run.py` trains a streaming velocity decoder on FALCON held-in sessions and scores it on the local minival split through the official evaluator.
 - **Calibration curve** — `eval/calibration.py` plots decode accuracy against calibration budget, few-shot transfer versus training from scratch: the practical payoff of pretraining.
 - **Sim-to-real** — `eval/sim2real.py` fits a fresh decoder purely on world-model-imagined data and scores it on real held-out recordings.
 - **Baselines** — `eval/baselines.py` ridge velocity decoder, the reference to beat.
@@ -73,4 +73,4 @@ A forward model buys more than offline accuracy:
 
 ## Status
 
-Architecture, training, the benchmarks, and the capabilities above are implemented and tested on synthetic neural dynamics; the data and evaluation paths are verified against the real NLB (`nlb_tools`) and FALCON (`falcon-challenge`) packages. Competitive numbers on real recordings are the next step and need GPU training.
+Architecture, training, and the capabilities above are implemented and tested. The evaluation paths run end to end on real recordings — NLB MC_Maze co-smoothing and FALCON H1 velocity decoding through the datasets' own scorers. The remaining milestone is the sequestered leaderboard test splits, which require an EvalAI submission; the internal validation/minival numbers are development figures and are not directly comparable to published test-split results.
