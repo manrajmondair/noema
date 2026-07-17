@@ -69,7 +69,8 @@ def fit(args):
     loader = DataLoader(core_ds, batch_size=args.batch, shuffle=True,
                         collate_fn=core_ds.collate, drop_last=True)
     run = wandb_run(args)
-    train(model, loader, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt, eval_every=args.eval_every),
+    train(model, loader, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt,
+                                     eval_every=args.eval_every, w_contrastive=args.w_contrastive),
           on_log=logger(run), val_ds=select_ds)
 
     metrics = evaluate(model, val_ds)
@@ -107,6 +108,7 @@ def main():
     p.add_argument("--cross", action="store_true", help="cross-attention co-smoothing readout (spatial only)")
     p.add_argument("--attn-pool", action="store_true", help="attention pool per-unit tokens into the latent (spatial only)")
     p.add_argument("--contrastive", action="store_true", help="add InfoNCE representation loss (STNDT-style)")
+    p.add_argument("--w-contrastive", type=float, default=1.0, help="weight on the contrastive loss")
     p.add_argument("--wandb", action="store_true")
     args = p.parse_args()
 
