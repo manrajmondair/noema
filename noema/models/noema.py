@@ -28,15 +28,31 @@ def latent_prediction_loss(pred, target):
     return (1.0 - (pred * target).sum(-1)).mean()
 
 
+def contrastive_loss(pred, target, temp=0.1):
+    # Per-trial InfoNCE over time: each timestep's masked online latent must match its
+    # own clean EMA-teacher latent, with the trial's other timesteps as negatives. This
+    # forces a temporally discriminative representation (the STNDT contrastive ingredient),
+    # a stronger regularizer than the cosine target alone since it also repels confusable
+    # neighboring states rather than only attracting the positive.
+    pred = F.normalize(pred, dim=-1)
+    target = F.normalize(target.detach(), dim=-1)
+    logits = torch.einsum("btd,bsd->bts", pred, target) / temp  # [B,T,T]
+    seq = pred.size(1)
+    labels = torch.arange(seq, device=pred.device).expand(pred.size(0), seq).reshape(-1)
+    return F.cross_entropy(logits.reshape(-1, seq), labels)
+
+
 class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
                  adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False,
-                 multistep=0, attn_pool=False):
+                 multistep=0, attn_pool=False, contrastive=False, contrastive_temp=0.1):
         super().__init__()
         self.spatial = spatial
         self.neuron_mask_ratio = neuron_mask_ratio
         self.multistep = multistep  # >1 adds a multi-step rollout loss (open-loop drift resistance)
+        self.contrastive = contrastive  # InfoNCE representation loss (STNDT-style)
+        self.contrastive_temp = contrastive_temp
         self.tokenizer = PopulationTokenizer(dim, max_units)
         self.encoder = (SpatioTemporalEncoder if spatial else TemporalEncoder)(dim, enc_depth, heads)
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
@@ -127,6 +143,11 @@ class Noema(nn.Module):
         target = self._teacher_target(counts, unit_ids)
         pred = self.world(z, actions)
         out["loss_jepa"] = latent_prediction_loss(pred[:, :-1], target[:, 1:])
+
+        # Contrastive representation loss: match the masked online latent to its clean
+        # teacher latent at the same timestep, repelling the trial's other timesteps.
+        if self.contrastive:
+            out["loss_contrastive"] = contrastive_loss(z, target, self.contrastive_temp)
 
         # Anchor the forecast in observation space: the predicted next latent must
         # decode to the next bin's firing. This is what makes rollouts faithful.

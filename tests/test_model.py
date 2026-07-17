@@ -37,6 +37,15 @@ def test_multistep_loss_is_opt_in_and_rolls_out():
         assert torch.isfinite(ms) and ms.item() > 0
 
 
+def test_contrastive_loss_is_opt_in_and_finite():
+    counts, unit_ids, _ = synthetic_batch(batch=6, steps=18, units=30)
+    off = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=32)
+    assert "loss_contrastive" not in off(counts, unit_ids)
+    on = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=32, contrastive=True)
+    lc = on(counts, unit_ids)["loss_contrastive"]
+    assert torch.isfinite(lc) and lc.item() > 0
+
+
 def test_attention_pool_reconstructs_and_differs_from_mean():
     from noema.eval.ensemble_run import build_from_state
 

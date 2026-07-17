@@ -20,6 +20,7 @@ class TrainConfig:
     w_jepa: float = 1.0
     w_forecast: float = 1.0
     w_multistep: float = 1.0
+    w_contrastive: float = 1.0
     w_behavior: float = 1.0
     w_session: float = 1.0
     w_sensory: float = 1.0
@@ -78,6 +79,7 @@ def train(model, loader, cfg, device=None, on_log=None, val_ds=None):
                     + cfg.w_jepa * out["loss_jepa"]
                     + cfg.w_forecast * out["loss_forecast"]
                     + cfg.w_multistep * out.get("loss_multistep", 0.0)
+                    + cfg.w_contrastive * out.get("loss_contrastive", 0.0)
                     + cfg.w_cosmooth * out.get("loss_cosmooth", 0.0)
                     + cfg.w_ncosmooth * out.get("loss_ncosmooth", 0.0)
                     + cfg.w_behavior * out.get("loss_behavior", 0.0)
