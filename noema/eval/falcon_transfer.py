@@ -37,15 +37,37 @@ def _load(pattern, task):
 
 
 @torch.no_grad()
-def _latent_stats(model, neural, window, device):
-    """Per-dimension mean/std of the encoder's last-position latent over a session."""
+def _latents(model, neural, window, device):
+    """The encoder's last-position latent over a session's windows -> [n_windows, dim]."""
     ds = SpikeWindows(neural, window=window)
     zs = []
     for b in DataLoader(ds, batch_size=64, collate_fn=ds.collate):
         z = model.encode(b["counts"].to(device), b["unit_ids"].to(device))
         zs.append(z[:, -1].cpu())
-    z = torch.cat(zs)
+    return torch.cat(zs)
+
+
+def _latent_stats(model, neural, window, device):
+    z = _latents(model, neural, window, device)
     return z.mean(0), z.std(0) + 1e-4
+
+
+def _coral_transform(train_z, unseen_z, device, eps=1e-3):
+    """CORAL: whiten the unseen latents and recolor to the training covariance, so the
+    full second-order statistics match — closed-form, no adversarial instability."""
+    dim = train_z.shape[1]
+    tm, um = train_z.mean(0), unseen_z.mean(0)
+
+    def msqrt(z, mean, inv):
+        c = torch.cov(z.T) + eps * torch.eye(dim)
+        val, vec = torch.linalg.eigh(c)
+        val = val.clamp_min(eps)
+        d = val.rsqrt() if inv else val.sqrt()
+        return (vec * d) @ vec.T
+
+    a = (msqrt(unseen_z, um, inv=True) @ msqrt(train_z, tm, inv=False)).to(device)
+    tm, um = tm.to(device), um.to(device)
+    return lambda zl: (zl - um) @ a + tm
 
 
 @torch.no_grad()
@@ -83,6 +105,8 @@ def main():
                    help="per-session per-channel gain normalization (equalizes electrode drift, log1p-safe)")
     p.add_argument("--latent-align", action="store_true",
                    help="NoMAD-style: match each unseen session's latent moments to the training distribution")
+    p.add_argument("--coral-align", action="store_true",
+                   help="CORAL: match full latent covariance (whiten-recolor) of each unseen session to training")
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -127,10 +151,13 @@ def main():
 
     import copy
 
-    train_lm = train_ls = None
-    if args.latent_align:  # reference latent distribution from a few training sessions
+    train_lm = train_ls = train_z = None
+    if args.latent_align or args.coral_align:  # reference latent distribution from training sessions
         ref = np.concatenate([n for _, n, _, _ in train_sessions[:4]], 0)
-        train_lm, train_ls = (x.to(device) for x in _latent_stats(model, ref, args.window, device))
+        if args.coral_align:
+            train_z = _latents(model, ref, args.window, device)
+        else:
+            train_lm, train_ls = (x.to(device) for x in _latent_stats(model, ref, args.window, device))
 
     seen = _score(model, *train_sessions[-1][1:], args.window, vmean, vstd, device)
     print(f"seen-session R2 = {seen:.3f}", flush=True)
@@ -143,7 +170,9 @@ def main():
         cut = int(len(n) * args.calib_frac)
         me = None if m is None else m[cut:]
         transform = None
-        if args.latent_align and cut > args.window * 4:
+        if args.coral_align and cut > args.window * 4:
+            transform = _coral_transform(train_z, _latents(model, n[:cut], args.window, device), device)
+        elif args.latent_align and cut > args.window * 4:
             um, us = (x.to(device) for x in _latent_stats(model, n[:cut], args.window, device))
             transform = (lambda zl, a=um, b=us: (zl - a) / b * train_ls + train_lm)
         zero.append(_score(model, n[cut:], k[cut:], me, args.window, vmean, vstd, device, transform))
