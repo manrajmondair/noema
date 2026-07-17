@@ -13,17 +13,20 @@
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink-1); font-family:var(--sans); -webkit-font-smoothing:antialiased; }
-  .wrap { max-width:960px; margin:0 auto; padding:64px 24px 56px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:56px 24px; min-height:100vh;
+         display:flex; flex-direction:column; justify-content:center; }
   h1 { font-size:25px; line-height:1.2; font-weight:600; letter-spacing:-.01em; margin:0 0 16px; }
   p.sub { font-size:16px; line-height:1.55; color:var(--ink-2); max-width:60ch; margin:0 0 48px; }
   .stage { font-family:var(--mono); font-size:11px; line-height:1; font-weight:500; letter-spacing:.14em;
            text-transform:uppercase; color:var(--ink-2); margin:0 0 14px; display:flex; align-items:center; gap:10px; min-height:22px; }
   .stage .n { color:var(--ink-3); }
-  .badge-row { display:flex; justify-content:flex-end; margin-top:12px; }
-  .badge { font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-2);
-           border:1px solid var(--hairline); padding:4px 9px; white-space:nowrap; }
-  .rig { display:grid; grid-template-columns:200px 20px 1fr 20px 240px; column-gap:16px; align-items:start; }
-  .flow { color:var(--ink-3); text-align:center; font-size:12px; user-select:none; align-self:center; padding-top:34px; }
+  .rig { display:grid; grid-template-columns:220px 28px 1fr 28px 220px; column-gap:0; align-items:start; }
+  .flow { color:var(--ink-3); text-align:center; font-size:15px; user-select:none; align-self:start; margin-top:150px; }
+  .panel { height:240px; display:flex; align-items:center; justify-content:center; }
+  .panel-raster { display:block; }
+  .raster-wrap { width:100%; }
+  .cap { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:14px;
+         font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink-3); min-height:16px; }
   .stage-col { min-width:0; }
   #pad { width:200px; height:200px; border-radius:50%; background:var(--surface); border:1px solid var(--hairline);
          position:relative; touch-action:none; cursor:crosshair; }
@@ -37,20 +40,22 @@
           transition:transform .1s cubic-bezier(.4,0,.2,1); pointer-events:none; }
   #pad.grab #knob { transform:scale(1.08); }
   #pad.grab #vector { background:var(--accent); }
-  #readout { font-family:var(--mono); font-size:12px; color:var(--ink-2); margin-top:16px; white-space:nowrap; }
-  #reset { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3);
-           margin-top:16px; cursor:pointer; user-select:none; transition:color .12s; display:inline-block; }
+  #readout { font-family:var(--mono); font-size:11px; letter-spacing:.02em; color:var(--ink-2); white-space:nowrap; transition:color .2s; }
+  #readout.idle { color:var(--ink-3); }
+  #reset { font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3);
+           cursor:pointer; user-select:none; transition:color .12s; }
   #reset:hover { color:var(--ink-2); }
+  .parity { color:var(--ink-3); }
   .raster-wrap { position:relative; border-left:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
   #raster { display:block; width:100%; height:240px; image-rendering:pixelated; background:var(--bg); }
-  .now { position:absolute; top:0; right:0; width:1px; height:100%; background:var(--ink-2); opacity:.5; pointer-events:none; }
-  .ticks { display:flex; justify-content:space-between; font-family:var(--mono); font-size:10px; letter-spacing:.04em;
-           color:var(--ink-3); margin-top:8px; }
+  .now { position:absolute; top:0; right:0; width:1px; height:100%; background:var(--ink-1); opacity:.6; pointer-events:none; }
+  .nowlbl { position:absolute; top:-16px; right:-6px; font-family:var(--mono); font-size:9px; letter-spacing:.06em; color:var(--ink-3); }
   #path { display:block; width:100%; height:200px; background:var(--bg); }
   .foot { font-family:var(--mono); font-size:12px; line-height:1.5; letter-spacing:.01em; color:var(--ink-3); margin-top:48px; max-width:72ch; }
   @media (max-width:860px) {
-    .rig { grid-template-columns:1fr; row-gap:28px; }
-    .flow { transform:rotate(90deg); }
+    .rig { grid-template-columns:1fr; row-gap:20px; }
+    .flow { transform:rotate(90deg); margin:0; align-self:center; }
+    .panel { height:auto; }
     #pad { margin:0 auto; }
   }
   @media (prefers-reduced-motion:reduce) { #knob,#reset { transition:none; } }
@@ -61,24 +66,23 @@
   <div class="rig">
     <section class="stage-col">
       <div class="stage"><span class="n">01</span>&nbsp;&middot;&nbsp;Intent</div>
-      <div id="pad">
+      <div class="panel"><div id="pad">
         <div class="grat-ring"></div><div class="grat-h"></div><div class="grat-v"></div>
         <div id="vector"></div><div id="knob"></div>
-      </div>
-      <div id="readout">&theta; ---&deg; &nbsp;&middot;&nbsp; &Vert;v&Vert; 0.00</div>
-      <div id="reset">Reset</div>
+      </div></div>
+      <div class="cap"><span id="readout" class="idle">&theta; &mdash;&deg; &nbsp;&middot;&nbsp; &Vert;v&Vert; &mdash;</span><span id="reset">Reset</span></div>
     </section>
-    <div class="flow">&#9656;</div>
+    <div class="flow">&rarr;</div>
     <section class="stage-col">
       <div class="stage"><span class="n">02</span>&nbsp;&middot;&nbsp;Imagined population</div>
-      <div class="raster-wrap"><canvas id="raster"></canvas><div class="now"></div></div>
-      <div class="ticks"><span>unit 1&hellip;N</span><span>0 &mdash;&mdash;&rarr; 1.8 s</span></div>
-      <div class="badge-row"><span class="badge">JS forward pass &middot; matches PyTorch to 1e&minus;5</span></div>
+      <div class="panel panel-raster"><div class="raster-wrap"><canvas id="raster"></canvas><div class="now"></div><span class="nowlbl">now</span></div></div>
+      <div class="cap"><span>unit 1&hellip;N</span><span>0 &rarr; 1.8&thinsp;s</span></div>
     </section>
-    <div class="flow">&#9656;</div>
+    <div class="flow">&rarr;</div>
     <section class="stage-col">
       <div class="stage"><span class="n">03</span>&nbsp;&middot;&nbsp;Decoded movement</div>
-      <canvas id="path"></canvas>
+      <div class="panel"><canvas id="path"></canvas></div>
+      <div class="cap"><span>reconstructed from firing</span><span class="parity">js &equiv; pytorch &lt; 1e&minus;5</span></div>
     </section>
   </div>
   <div class="foot">Compact action-conditioned world model trained on synthetic population dynamics. Part of a benchmarked program (NLB co-bps, FALCON). The browser runs its exact forward pass &mdash; no server, no playback.</div>
@@ -246,7 +250,7 @@ function drawRaster() {
   rx.imageSmoothingEnabled = false;
   const img = rx.createImageData(90, N), c = [0, 0, 0];
   for (let x = 0; x < T; x++) for (let y = 0; y < N; y++) {
-    magma(Math.min(1, history[x][y] / 6) ** 0.85, c);
+    magma(Math.min(1, history[x][y] / 6) ** 0.7, c);
     const o = (y * 90 + x) * 4;
     img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
   }
@@ -275,9 +279,22 @@ function drawPath() {
     px.strokeStyle = 'rgba(88,183,212,' + (t * t * 0.9).toFixed(3) + ')'; px.lineWidth = 0.6 + t * 1.6;
     px.beginPath(); px.moveTo(cx + a[0] * s, cy - a[1] * s); px.lineTo(cx + b[0] * s, cy - b[1] * s); px.stroke();
   }
+  // origin marker
+  px.strokeStyle = '#293040'; px.lineWidth = 1;
+  px.beginPath(); px.arc(cx, cy, 3, 0, Math.PI * 2); px.stroke();
+  // comet head
   const X = cx + head[0] * s, Y = cy - head[1] * s;
   px.fillStyle = '#D5DCE7'; px.beginPath(); px.arc(X, Y, 2.6, 0, Math.PI * 2); px.fill();
   px.strokeStyle = 'rgba(88,183,212,.55)'; px.lineWidth = 1; px.beginPath(); px.arc(X, Y, 5, 0, Math.PI * 2); px.stroke();
+  // intent vs decoded agreement (cosine of recent decoded velocity with the intent)
+  let align = null;
+  if (n > 5 && gm > 0.05) {
+    const dv0 = path[n - 1][0] - path[n - 5][0], dv1 = path[n - 1][1] - path[n - 5][1], dm = Math.hypot(dv0, dv1);
+    if (dm > 1e-3) align = (dv0 * action[0] + dv1 * action[1]) / (dm * gm);
+  }
+  px.font = '10px ui-monospace, "SF Mono", Menlo, monospace'; px.textBaseline = 'top';
+  px.fillStyle = align == null ? '#4A5468' : '#7E8AA0';
+  px.fillText('align ' + (align == null ? '\u2014' : align.toFixed(2)), 2, 2);
 }
 
 const pad = document.getElementById('pad'), knob = document.getElementById('knob');
@@ -291,6 +308,7 @@ function setAction(ev) {
   knob.style.left = (92 + dx * 92) + 'px'; knob.style.top = (92 + dy * 92) + 'px';
   vector.style.width = (mag * 92) + 'px'; vector.style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad)';
   const deg = (Math.round(Math.atan2(-dy, dx) * 180 / Math.PI) + 360) % 360;
+  readout.classList.toggle('idle', mag <= 0.01);
   readout.innerHTML = '\u03B8 ' + (mag > 0.01 ? String(deg).padStart(3, '0') : '---') + '\u00B0 \u00B7 \u2016v\u2016 ' + mag.toFixed(2);
   action = [dx * 1.3, -dy * 1.3];
 }
@@ -301,7 +319,7 @@ document.getElementById('reset').onclick = () => {
   z = M.seed.z.map(r => r.slice()); a = M.seed.actions.map(r => r.slice());
   pos = [0, 0]; head = [0, 0]; path.length = 0; history.length = 0; action = [0, 0];
   knob.style.left = '92px'; knob.style.top = '92px'; vector.style.width = '0px';
-  readout.innerHTML = '\u03B8 ---\u00B0 \u00B7 \u2016v\u2016 0.00';
+  readout.classList.add('idle'); readout.innerHTML = '\u03B8 \u2014\u00B0 \u00B7 \u2016v\u2016 \u2014';
 };
 
 setInterval(() => { stepModel(); drawRaster(); }, 110);
