@@ -62,14 +62,16 @@ def _forward(models, spikes, in_ids, out_ids, device, fp_steps):
             for _ in range(fp_steps):
                 z = torch.cat([z, m.world(z, None)[:, -1:]], dim=1)
             fwd = z[:, -fp_steps:]
-            hi_m.append(m.tokenizer.decode(fwd, in_ids).exp())
-            ho_m.append(m.tokenizer.decode(fwd, out_ids).exp())
+            # open-loop rollouts of a one-step-trained model can diverge; clamp to a
+            # physical ceiling so a drifting member cannot poison the ensemble mean.
+            hi_m.append(m.tokenizer.decode(fwd, in_ids).exp().clamp_max(20.0))
+            ho_m.append(m.tokenizer.decode(fwd, out_ids).exp().clamp_max(20.0))
         hif.append(torch.stack(hi_m).mean(0).cpu())
         hof.append(torch.stack(ho_m).mean(0).cpu())
     return torch.cat(hif).numpy(), torch.cat(hof).numpy()
 
 
-def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
+def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False):
     import os
 
     from nlb_tools.make_tensors import make_eval_input_tensors, make_train_input_tensors, save_to_h5
@@ -120,15 +122,18 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
         "train_rates_heldin": tr_hi, "train_rates_heldout": tr_ho,
     }}
 
-    # Forward-prediction rates (for fp-bps): roll the world model past each trial.
-    from nlb_tools.make_tensors import PARAMS
-    fp_steps = int(PARAMS[name]["fp_len"] // bin_ms)
-    ef_hi, ef_ho = (smooth(r) for r in _forward(models, eval_hi, in_ids, out_ids, device, fp_steps))
-    tf_hi, tf_ho = (smooth(r) for r in _forward(models, train["train_spikes_heldin"], in_ids, out_ids, device, fp_steps))
-    submission[name].update({
-        "eval_rates_heldin_forward": ef_hi, "eval_rates_heldout_forward": ef_ho,
-        "train_rates_heldin_forward": tf_hi, "train_rates_heldout_forward": tf_ho,
-    })
+    # Forward-prediction rates (fp-bps) — opt-in. A one-step-trained ensemble drifts in
+    # open loop, so its forward rollout is unreliable; only include it with a world model
+    # trained for multi-step rollout, else omit fp and score co-bps + vel + PSTH only.
+    if forward:
+        from nlb_tools.make_tensors import PARAMS
+        fp_steps = int(PARAMS[name]["fp_len"] // bin_ms)
+        ef_hi, ef_ho = (smooth(r) for r in _forward(models, eval_hi, in_ids, out_ids, device, fp_steps))
+        tf_hi, tf_ho = (smooth(r) for r in _forward(models, train["train_spikes_heldin"], in_ids, out_ids, device, fp_steps))
+        submission[name].update({
+            "eval_rates_heldin_forward": ef_hi, "eval_rates_heldout_forward": ef_ho,
+            "train_rates_heldin_forward": tf_hi, "train_rates_heldout_forward": tf_ho,
+        })
 
     save_to_h5(submission, out_h5, overwrite=True)
     print(f"wrote {out_h5}: {er_ho.shape[0]} test trials, {n_ho} held-out neurons, "
@@ -142,8 +147,9 @@ def main():
     p.add_argument("--path", required=True)
     p.add_argument("--out", default="submission.h5")
     p.add_argument("--bin-ms", type=int, default=5)
+    p.add_argument("--forward", action="store_true", help="include fp-bps forward rates (needs a multi-step world model)")
     args = p.parse_args()
-    make_submission(args.ckpts.split(","), args.path, args.name, args.out, args.bin_ms)
+    make_submission(args.ckpts.split(","), args.path, args.name, args.out, args.bin_ms, forward=args.forward)
 
 
 if __name__ == "__main__":
