@@ -46,6 +46,9 @@
            cursor:pointer; user-select:none; transition:color .12s; }
   #reset:hover { color:var(--ink-2); }
   .parity { color:var(--ink-3); }
+  .legend { display:flex; align-items:center; gap:7px; color:var(--ink-3); }
+  .legend i { width:64px; height:5px; display:inline-block;
+    background:linear-gradient(90deg,#000004,#2c1164,#711f81,#b5367a,#e55064,#fb8761,#fec287,#fcfdbf); }
   .raster-wrap { position:relative; border-left:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
   #raster { display:block; width:100%; height:240px; image-rendering:pixelated; background:var(--bg); }
   .now { position:absolute; top:0; right:0; width:1px; height:100%; background:var(--ink-1); opacity:.6; pointer-events:none; }
@@ -76,7 +79,7 @@
     <section class="stage-col">
       <div class="stage"><span class="n">02</span>&nbsp;&middot;&nbsp;Imagined population</div>
       <div class="panel panel-raster"><div class="raster-wrap"><canvas id="raster"></canvas><div class="now"></div><span class="nowlbl">now</span></div></div>
-      <div class="cap"><span>unit 1&hellip;N</span><span>0 &rarr; 1.8&thinsp;s</span></div>
+      <div class="cap"><span>unit 1&hellip;N</span><span class="legend">low<i></i>high firing</span><span>0 &rarr; 1.8&thinsp;s</span></div>
     </section>
     <div class="flow">&rarr;</div>
     <section class="stage-col">
