@@ -38,10 +38,13 @@ def _infer_rates(model, dataset, device, batch_size=64):
     loader = DataLoader(dataset, batch_size=batch_size, collate_fn=dataset.collate)
     rates, behavior = [], []
     for batch in loader:
-        z = model.encode(batch["counts"].to(device), batch["unit_ids"].to(device))
-        parts = [model.tokenizer.decode(z, batch["unit_ids"].to(device)).exp()]
+        counts, in_ids = batch["counts"].to(device), batch["unit_ids"].to(device)
+        # each readout via the model's own path (per-unit / cross for the spatial encoder)
+        tokens, z = model._represent(counts, in_ids)
+        hi = (model.tokenizer.decode_units(tokens, in_ids) if model.spatial else model.tokenizer.decode(z, in_ids))
+        parts = [hi.exp()]
         if "target_unit_ids" in batch:
-            parts.append(model.tokenizer.decode(z, batch["target_unit_ids"].to(device)).exp())
+            parts.append(model._cosmooth_from(tokens, z, batch["target_unit_ids"].to(device)).exp())
         rates.append(torch.cat(parts, dim=-1).reshape(-1, sum(p.size(-1) for p in parts)).cpu())
         behavior.append(batch["behavior"].reshape(-1, batch["behavior"].size(-1)))
     return torch.cat(rates).numpy(), torch.cat(behavior).numpy()

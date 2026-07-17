@@ -29,13 +29,20 @@ def _cosmooth(models, spikes, in_ids, out_ids, device):
     return torch.cat(out)
 
 
+def _heldin(m, s, in_ids):
+    """A model's held-in log-rates via its OWN readout: per-unit for the spatial
+    encoder, pooled-latent for the temporal one (mirrors Noema.forward)."""
+    tokens, z = m._represent(s, in_ids)
+    return m.tokenizer.decode_units(tokens, in_ids) if m.spatial else m.tokenizer.decode(z, in_ids)
+
+
 @torch.no_grad()
 def _rates(models, spikes, in_ids, out_ids, device):
     spikes = torch.as_tensor(spikes, dtype=torch.float32)
     his, hos = [], []
     for i in range(0, spikes.size(0), _BATCH):
         s = spikes[i:i + _BATCH].to(device)
-        his.append(torch.stack([m.tokenizer.decode(m.encode(s, in_ids), in_ids).exp() for m in models]).mean(0).cpu())
+        his.append(torch.stack([_heldin(m, s, in_ids).exp() for m in models]).mean(0).cpu())
         hos.append(torch.stack([m.cosmooth(s, in_ids, out_ids).exp() for m in models]).mean(0).cpu())
     return torch.cat(his).numpy(), torch.cat(hos).numpy()
 
@@ -52,6 +59,15 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8):
     eval_hi = make_eval_input_tensors(dataset, name, trial_split="test", save_file=False)["eval_spikes_heldin"]
     train = make_train_input_tensors(dataset, name, trial_split="train", save_file=False)
     n_hi, n_ho = eval_hi.shape[-1], train["train_spikes_heldout"].shape[-1]
+
+    # Provenance: the sequestered TEST split must actually be present (requires the test
+    # NWB in the dandiset dir). A train-only download yields an empty test mask and a
+    # well-formed but meaningless submission — fail loudly rather than upload garbage.
+    if eval_hi.shape[0] == 0:
+        raise RuntimeError(f"no '{name}' test trials found — the sequestered test NWB is absent; "
+                           "download the full dandiset before generating a submission.")
+    print(f"test trials={eval_hi.shape[0]}, train trials={train['train_spikes_heldin'].shape[0]}, "
+          f"held-in units={n_hi}, held-out units={n_ho}", flush=True)
 
     device = default_device()
     models = [build_from_state(torch.load(c, map_location="cpu"), n_hi + n_ho, heads)[0].to(device) for c in ckpts]
