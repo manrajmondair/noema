@@ -9,7 +9,7 @@ from torch import nn
 from .adversary import SessionAdversary
 from .coupling import SensoryEncoder
 from .encoder import SpatioTemporalEncoder, TemporalEncoder
-from .heads import BehaviorHead, CrossReadout
+from .heads import AttentionPool, BehaviorHead, CrossReadout
 from .tokenizer import PopulationTokenizer
 from .world_model import WorldModel
 
@@ -32,7 +32,7 @@ class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
                  adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False,
-                 multistep=0):
+                 multistep=0, attn_pool=False):
         super().__init__()
         self.spatial = spatial
         self.neuron_mask_ratio = neuron_mask_ratio
@@ -42,9 +42,14 @@ class Noema(nn.Module):
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
         self.behavior = BehaviorHead(dim, behavior_dim) if behavior_dim else None
         self.cross = CrossReadout(dim, heads) if (spatial and cross) else None  # per-unit co-smoothing
+        # Content-weighted pool of the per-unit tokens into the shared latent (spatial only);
+        # falls back to a mean when off. The teacher mirrors it so the JEPA target lives in
+        # the same latent space the world model predicts.
+        self.pooler = AttentionPool(dim, heads) if (spatial and attn_pool) else None
         self.sensory = SensoryEncoder(context_dim, dim, max(2, wm_depth)) if context_dim else None
         self.adversary = SessionAdversary(dim, sessions, adv_weight) if sessions else None
         self.teacher = copy.deepcopy(self.encoder).requires_grad_(False)
+        self.teacher_pooler = copy.deepcopy(self.pooler).requires_grad_(False) if self.pooler else None
         self.mask_ratio = mask_ratio
         self.ema = ema
         # Head count can't be read back from weight shapes (qkv is dim->k*dim regardless),
@@ -56,7 +61,8 @@ class Noema(nn.Module):
         # returns (per-unit tokens or None, pooled latent z [B,T,dim])
         if self.spatial:
             tokens = self.encoder(self.tokenizer.encode_units(counts, unit_ids))
-            return tokens, tokens.mean(2)  # pool over units into the shared latent
+            z = self.pooler(tokens) if self.pooler is not None else tokens.mean(2)
+            return tokens, z
         return None, self.encoder(self.tokenizer.encode(counts, unit_ids))
 
     def encode(self, counts, unit_ids):
@@ -64,7 +70,8 @@ class Noema(nn.Module):
 
     def _teacher_target(self, counts, unit_ids):
         if self.spatial:
-            return self.teacher(self.tokenizer.encode_units(counts, unit_ids)).mean(2)
+            tok = self.teacher(self.tokenizer.encode_units(counts, unit_ids))
+            return self.teacher_pooler(tok) if self.teacher_pooler is not None else tok.mean(2)
         return self.teacher(self.tokenizer.encode(counts, unit_ids))
 
     def cosmooth(self, counts, unit_ids, target_unit_ids):
@@ -167,3 +174,6 @@ class Noema(nn.Module):
     def update_teacher(self):
         for online, target in zip(self.encoder.parameters(), self.teacher.parameters()):
             target.lerp_(online, 1.0 - self.ema)
+        if self.teacher_pooler is not None:
+            for online, target in zip(self.pooler.parameters(), self.teacher_pooler.parameters()):
+                target.lerp_(online, 1.0 - self.ema)

@@ -37,6 +37,28 @@ def test_multistep_loss_is_opt_in_and_rolls_out():
         assert torch.isfinite(ms) and ms.item() > 0
 
 
+def test_attention_pool_reconstructs_and_differs_from_mean():
+    from noema.eval.ensemble_run import build_from_state
+
+    counts, unit_ids, _ = synthetic_batch(batch=4, steps=16, units=30, behavior_dim=0)
+    hi = counts[..., :20]  # held-in spikes; the other 10 units are the co-smoothing target
+    in_ids, out_ids = unit_ids[:20], unit_ids[20:]
+    model = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=32, spatial=True, attn_pool=True)
+    model.eval()
+
+    # the pooled latent must actually use the learned query, not reduce to a mean
+    tokens = model.encoder(model.tokenizer.encode_units(hi, in_ids))
+    assert not torch.allclose(model.pooler(tokens), tokens.mean(2), atol=1e-4)
+
+    # build_from_state auto-detects the pooler from the weights and rebuilds bit-identically
+    rebuilt, desc = build_from_state(model.state_dict(), max_units=32, heads=4)
+    assert "attnpool" in desc
+    rebuilt.eval()
+    a = model.cosmooth(hi, in_ids, out_ids)
+    b = rebuilt.cosmooth(hi, in_ids, out_ids)
+    assert torch.allclose(a, b, atol=1e-5)
+
+
 def test_overfits_single_batch():
     torch.manual_seed(0)
     counts, unit_ids, behavior = synthetic_batch(batch=16, steps=40, units=50, behavior_dim=2)

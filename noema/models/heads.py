@@ -1,5 +1,31 @@
+import torch
 import torch.nn.functional as F
 from torch import nn
+
+
+class AttentionPool(nn.Module):
+    """Pool per-unit tokens [B,T,N,D] into the shared latent [B,T,D] with a learned
+    query attending over the unit set — a content-weighted summary that keeps which
+    units drive the population state, unlike a mean that weights every unit equally.
+    The co-smoothing readout decodes held-out rates from this latent, so a sharper
+    pool feeds the co-bps metric directly."""
+
+    def __init__(self, dim: int, heads: int):
+        super().__init__()
+        self.heads = heads
+        self.head_dim = dim // heads
+        self.query = nn.Parameter(torch.randn(dim) * dim ** -0.5)
+        self.norm = nn.LayerNorm(dim)
+        self.kv = nn.Linear(dim, 2 * dim, bias=False)
+        self.proj = nn.Linear(dim, dim, bias=False)
+
+    def forward(self, tokens):  # [B,T,N,D] -> [B,T,D]
+        B, T, N, D = tokens.shape
+        x = self.norm(tokens).reshape(B * T, N, D)
+        q = self.query.view(1, self.heads, 1, self.head_dim).expand(B * T, -1, -1, -1)
+        kv = self.kv(x).view(B * T, N, 2, self.heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        o = F.scaled_dot_product_attention(q, kv[0], kv[1])  # [B*T, heads, 1, head_dim]
+        return self.proj(o.reshape(B * T, D)).reshape(B, T, D)
 
 
 class BehaviorHead(nn.Module):

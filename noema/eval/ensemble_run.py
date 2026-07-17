@@ -24,12 +24,15 @@ def build_from_state(state, max_units, heads=8):
         heads = int(state["num_heads"].item())
     spatial = any(k.startswith("encoder.spatial.") for k in state)
     cross = any(k.startswith("cross.") for k in state)
+    attn_pool = any(k.startswith("pooler.") for k in state)
     prefix = "encoder.temporal." if spatial else "encoder.blocks."
     depth = len({k[len(prefix):].split(".")[0] for k in state if k.startswith(prefix)})
     model = Noema(dim=dim, enc_depth=depth, wm_depth=1, heads=heads,
-                  max_units=max_units, spatial=spatial, cross=cross)
+                  max_units=max_units, spatial=spatial, cross=cross, attn_pool=attn_pool)
     model.load_state_dict(state, strict=False)  # world model unused here; heads is not in weights
     tag = "spatial+cross" if cross else ("spatial" if spatial else "temporal")
+    if attn_pool:
+        tag += "+attnpool"
     return model, f"dim{dim} depth{depth} {tag}"
 
 
