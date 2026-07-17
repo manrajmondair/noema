@@ -128,12 +128,22 @@ class Noema(nn.Module):
         # Multi-step rollout: keep predicting from the model's OWN predicted latents and
         # match each future bin's firing. Training on its own rollout (not the clean
         # encoding) is what teaches open-loop rollouts to resist drift over the horizon.
-        if self.multistep > 1 and actions is None and counts.size(1) > self.multistep:
-            zk, ms = pred, 0.0
+        # zk[t] ~ z[t+k] after k steps; when action-conditioned, the action that drives the
+        # step into bin t+k is a_{t+k-1}, so the action stream is shifted and zk truncated.
+        if self.multistep > 1 and counts.size(1) > self.multistep:
+            zk, ms, nk = pred, 0.0, 0
             for k in range(2, self.multistep + 1):
-                zk = self.world(zk, None)
-                ms = ms + poisson_nll(self.tokenizer.decode(zk[:, :-k], unit_ids), counts[:, k:])
-            out["loss_multistep"] = ms / (self.multistep - 1)
+                a = actions[:, k - 1:] if actions is not None else None
+                if a is not None:
+                    zk = zk[:, :a.size(1)]
+                zk = self.world(zk, a)
+                L = counts.size(1) - k
+                if L <= 0:
+                    break
+                ms = ms + poisson_nll(self.tokenizer.decode(zk[:, :L], unit_ids), counts[:, k:k + L])
+                nk += 1
+            if nk:
+                out["loss_multistep"] = ms / nk
 
         if self.behavior is not None and behavior is not None:
             out["loss_behavior"] = F.mse_loss(self.behavior(z), behavior)

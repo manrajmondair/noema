@@ -24,6 +24,19 @@ def test_rollout_shape():
     assert behavior is None
 
 
+def test_multistep_loss_is_opt_in_and_rolls_out():
+    counts, unit_ids, _ = synthetic_batch(batch=8, steps=20, units=30)
+    actions = torch.randn(8, 20, 2)
+    # default: no multi-step term
+    off = Noema(dim=48, enc_depth=2, wm_depth=2, heads=4, max_units=32, action_dim=2)
+    assert "loss_multistep" not in off(counts, unit_ids, actions=actions)
+    # opt-in: present and finite, both action-conditioned and unconditioned
+    on = Noema(dim=48, enc_depth=2, wm_depth=2, heads=4, max_units=32, action_dim=2, multistep=6)
+    for a in (actions, None):
+        ms = on(counts, unit_ids, actions=a)["loss_multistep"]
+        assert torch.isfinite(ms) and ms.item() > 0
+
+
 def test_overfits_single_batch():
     torch.manual_seed(0)
     counts, unit_ids, behavior = synthetic_batch(batch=16, steps=40, units=50, behavior_dim=2)
