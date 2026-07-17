@@ -64,6 +64,8 @@ def main():
     p.add_argument("--calib-frac", type=float, default=0.5, help="fraction of each held-out session used for calibration")
     p.add_argument("--adapt-steps", type=int, default=0, help=">0 enables few-shot adaptation on each session's calib split")
     p.add_argument("--adapt-lr", type=float, default=3e-4)
+    p.add_argument("--adversary", action="store_true", help="domain-adversarial session invariance during training")
+    p.add_argument("--adv-weight", type=float, default=1.0)
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -80,12 +82,16 @@ def main():
 
     all_kin = np.concatenate([k for _, _, k, _ in train_sessions], 0)
     vmean, vstd = all_kin.mean(0), all_kin.std(0) + 1e-8
-    parts = [SpikeWindows(n, behavior=(k - vmean) / vstd, window=args.window) for _, n, k, _ in train_sessions]
+    parts = [SpikeWindows(n, behavior=(k - vmean) / vstd, window=args.window,
+                          session=(i if args.adversary else None))
+             for i, (_, n, k, _) in enumerate(train_sessions)]
     loader = DataLoader(ConcatDataset(parts), batch_size=args.batch, shuffle=True,
                         collate_fn=parts[0].collate, drop_last=True)
 
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=2, heads=8,
-                  max_units=cfg.n_channels, behavior_dim=cfg.out_dim).to(device)
+                  max_units=cfg.n_channels, behavior_dim=cfg.out_dim,
+                  sessions=(len(train_sessions) if args.adversary else 0),
+                  adv_weight=args.adv_weight).to(device)
 
     def log(step, d):
         if "loss_behavior" in d and step % 1000 == 0:

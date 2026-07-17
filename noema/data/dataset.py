@@ -50,6 +50,8 @@ class SpikeWindows(Dataset):
             item["actions"] = self.actions[i]
         if self.context is not None:
             item["context"] = self.context[i]
+        if self.session is not None:  # per-sample so concatenated sessions keep their ids
+            item["session"] = torch.as_tensor(self.session, dtype=torch.long)
         return item
 
     def collate(self, samples):
@@ -57,8 +59,6 @@ class SpikeWindows(Dataset):
         batch["unit_ids"] = self.in_ids
         if self.heldout is not None:
             batch["target_unit_ids"] = self.out_ids
-        if self.session is not None:
-            batch["session"] = torch.full((len(samples),), self.session, dtype=torch.long)
         return batch
 
 
