@@ -37,3 +37,7 @@ demo/model.json
 .DS_Store
 .idea/
 .vscode/
+
+# FALCON local eval artifacts
+local_gt.pkl
+local_prediction.pkl
