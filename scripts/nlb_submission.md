@@ -1,10 +1,14 @@
 # MC_Maze submission — reproduction
 
 The EvalAI `submission.h5` is a rate-space ensemble. Members are greedily selected
-(Caruana, on the validation split) and a single Gaussian smoothing sigma is tuned the
-same way; the selected members' mean rates (held-in via each member's own readout,
-held-out via co-smoothing, plus a forward rollout for fp-bps) are written for the test
-and train splits.
+(Caruana with replacement, on the validation split) and a single Gaussian smoothing
+sigma is tuned the same way; the selected members' count-weighted mean rates (held-in
+via each member's own readout, held-out via co-smoothing) are written for the test and
+train splits, scoring co-bps + velocity + PSTH.
+
+The forward-rollout keys (fp-bps) are omitted by default (`--forward` to opt in): a
+one-step-trained ensemble diverges in open loop, so its rollout is unreliable and would
+poison the mean. Only include fp with a world model trained for multi-step rollout.
 
 ## Ensemble members (10)
 
@@ -18,6 +22,11 @@ and train splits.
 
 All members use `heads=8`, 5 ms bins, and are trained with val-co-bps checkpoint
 selection on a train-carved select split (see `noema/train/run.py`).
+
+The temporal members are the strongest (val co-bps ~0.27–0.30); the spatial + cross
+members plateau lower (~0.24–0.26) and neither matches nor beats the temporal ensemble —
+greedy selection down-weights them accordingly. Ensembling (~0.33 val) is the only lever
+that beats the best single member; no single architecture wins on this benchmark.
 
 ## Regenerate
 
