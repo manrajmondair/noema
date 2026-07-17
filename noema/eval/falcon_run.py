@@ -45,6 +45,7 @@ def main():
     p.add_argument("--batch", type=int, default=64)
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--w-behavior", type=float, default=5.0)
+    p.add_argument("--multistep", type=int, default=0, help=">1 adds a multi-step world-model rollout loss")
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -65,7 +66,7 @@ def main():
     loader = DataLoader(ds, batch_size=args.batch, shuffle=True, collate_fn=parts[0].collate, drop_last=True)
 
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=2, heads=8,
-                  max_units=cfg.n_channels, behavior_dim=cfg.out_dim).to(device)
+                  max_units=cfg.n_channels, behavior_dim=cfg.out_dim, multistep=args.multistep).to(device)
 
     def log(step, d):
         if "loss_behavior" in d and step % 500 == 0:
