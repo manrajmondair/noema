@@ -1,44 +1,87 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Noema — steer the neural world model</title>
+<title>Noema — a world model of neural population dynamics</title>
 <style>
-  :root { color-scheme: dark; }
-  body { margin:0; background:#0b0e14; color:#c9d3e0;
-         font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
-  .wrap { max-width:900px; margin:0 auto; padding:32px 20px 48px; }
-  h1 { font-size:20px; font-weight:600; margin:0 0 4px; }
-  p.sub { color:#7c8698; margin:0 0 24px; max-width:640px; }
-  .grid { display:grid; grid-template-columns:1fr; gap:24px; align-items:start; }
-  @media (min-width:720px) { .grid { grid-template-columns:220px 1fr; } }
-  #pad { margin:0 auto; }
-  .label { font-size:12px; color:#7c8698; margin:0 0 6px; }
-  canvas { display:block; width:100%; border-radius:6px; }
-  #pad { width:200px; height:200px; border-radius:50%; background:#141a26;
-         border:1px solid #2c3446; position:relative; touch-action:none; cursor:grab; }
-  #knob { width:34px; height:34px; border-radius:50%; background:#4b9fff;
-          position:absolute; left:83px; top:83px; box-shadow:0 0 18px #4b9fff88; }
-  button { background:#1b2130; color:#c9d3e0; border:1px solid #2c3446; border-radius:6px;
-           padding:6px 14px; cursor:pointer; margin-top:12px; font-size:13px; }
-  .foot { color:#4d566a; font-size:11px; margin-top:24px; }
+  :root {
+    color-scheme: dark;
+    --sans:"Helvetica Neue",Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","IBM Plex Mono",Menlo,Consolas,monospace;
+    --bg:#0A0C11; --surface:#0E1219; --hairline:#1C2230; --hairline-hi:#293040;
+    --ink-1:#D5DCE7; --ink-2:#7E8AA0; --ink-3:#4A5468;
+    --accent:#58B7D4; --accent-soft:rgba(88,183,212,.38);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink-1); font-family:var(--sans); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:960px; margin:0 auto; padding:64px 24px 56px; }
+  h1 { font-size:25px; line-height:1.2; font-weight:600; letter-spacing:-.01em; margin:0 0 16px; }
+  p.sub { font-size:16px; line-height:1.55; color:var(--ink-2); max-width:60ch; margin:0 0 48px; }
+  .stage { font-family:var(--mono); font-size:11px; line-height:1; font-weight:500; letter-spacing:.14em;
+           text-transform:uppercase; color:var(--ink-2); margin:0 0 14px; display:flex; align-items:center; gap:10px; min-height:22px; }
+  .stage .n { color:var(--ink-3); }
+  .badge-row { display:flex; justify-content:flex-end; margin-top:12px; }
+  .badge { font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-2);
+           border:1px solid var(--hairline); padding:4px 9px; white-space:nowrap; }
+  .rig { display:grid; grid-template-columns:200px 20px 1fr 20px 240px; column-gap:16px; align-items:start; }
+  .flow { color:var(--ink-3); text-align:center; font-size:12px; user-select:none; align-self:center; padding-top:34px; }
+  .stage-col { min-width:0; }
+  #pad { width:200px; height:200px; border-radius:50%; background:var(--surface); border:1px solid var(--hairline);
+         position:relative; touch-action:none; cursor:crosshair; }
+  .grat-ring { position:absolute; left:30px; top:30px; width:140px; height:140px; border:1px solid var(--hairline-hi); border-radius:50%; pointer-events:none; }
+  .grat-h,.grat-v { position:absolute; background:var(--hairline-hi); pointer-events:none; }
+  .grat-h { left:92px; top:99px; width:16px; height:1px; }
+  .grat-v { left:99px; top:92px; width:1px; height:16px; }
+  #vector { position:absolute; left:100px; top:100px; height:1px; width:0; background:var(--accent-soft);
+            transform-origin:left center; pointer-events:none; }
+  #knob { position:absolute; left:92px; top:92px; width:16px; height:16px; border-radius:50%; background:var(--accent);
+          transition:transform .1s cubic-bezier(.4,0,.2,1); pointer-events:none; }
+  #pad.grab #knob { transform:scale(1.08); }
+  #pad.grab #vector { background:var(--accent); }
+  #readout { font-family:var(--mono); font-size:12px; color:var(--ink-2); margin-top:16px; white-space:nowrap; }
+  #reset { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3);
+           margin-top:16px; cursor:pointer; user-select:none; transition:color .12s; display:inline-block; }
+  #reset:hover { color:var(--ink-2); }
+  .raster-wrap { position:relative; border-left:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
+  #raster { display:block; width:100%; height:240px; image-rendering:pixelated; background:var(--bg); }
+  .now { position:absolute; top:0; right:0; width:1px; height:100%; background:var(--ink-2); opacity:.5; pointer-events:none; }
+  .ticks { display:flex; justify-content:space-between; font-family:var(--mono); font-size:10px; letter-spacing:.04em;
+           color:var(--ink-3); margin-top:8px; }
+  #path { display:block; width:100%; height:200px; background:var(--bg); }
+  .foot { font-family:var(--mono); font-size:12px; line-height:1.5; letter-spacing:.01em; color:var(--ink-3); margin-top:48px; max-width:72ch; }
+  @media (max-width:860px) {
+    .rig { grid-template-columns:1fr; row-gap:28px; }
+    .flow { transform:rotate(90deg); }
+    #pad { margin:0 auto; }
+  }
+  @media (prefers-reduced-motion:reduce) { #knob,#reset { transition:none; } }
 </style></head>
 <body><div class="wrap">
-  <h1>Noema — steer the neural world model</h1>
-  <p class="sub">Drag the pad to set an intended movement. The world model imagines the population's firing in response and decodes it back into motion — running live in your browser, weights matched to the trained model.</p>
-  <div class="grid">
-    <div>
-      <div class="label">intended movement</div>
-      <div id="pad"><div id="knob"></div></div>
-      <button id="reset">Reset</button>
-    </div>
-    <div>
-      <div class="label">imagined population firing &nbsp;·&nbsp; neurons × time →</div>
-      <canvas id="raster"></canvas>
-      <div class="label" style="margin-top:18px">decoded movement</div>
+  <h1>A steerable world model of neural population dynamics</h1>
+  <p class="sub">Set an intended movement. The model imagines the neural population activity that intention would produce &mdash; then reconstructs the movement from that imagined firing alone. It runs live here as the trained model&rsquo;s exact forward pass.</p>
+  <div class="rig">
+    <section class="stage-col">
+      <div class="stage"><span class="n">01</span>&nbsp;&middot;&nbsp;Intent</div>
+      <div id="pad">
+        <div class="grat-ring"></div><div class="grat-h"></div><div class="grat-v"></div>
+        <div id="vector"></div><div id="knob"></div>
+      </div>
+      <div id="readout">&theta; ---&deg; &nbsp;&middot;&nbsp; &Vert;v&Vert; 0.00</div>
+      <div id="reset">Reset</div>
+    </section>
+    <div class="flow">&#9656;</div>
+    <section class="stage-col">
+      <div class="stage"><span class="n">02</span>&nbsp;&middot;&nbsp;Imagined population</div>
+      <div class="raster-wrap"><canvas id="raster"></canvas><div class="now"></div></div>
+      <div class="ticks"><span>unit 1&hellip;N</span><span>0 &mdash;&mdash;&rarr; 1.8 s</span></div>
+      <div class="badge-row"><span class="badge">JS forward pass &middot; matches PyTorch to 1e&minus;5</span></div>
+    </section>
+    <div class="flow">&#9656;</div>
+    <section class="stage-col">
+      <div class="stage"><span class="n">03</span>&nbsp;&middot;&nbsp;Decoded movement</div>
       <canvas id="path"></canvas>
-    </div>
+    </section>
   </div>
-  <div class="foot">A compact model trained on synthetic action-driven dynamics; the browser runs its exact forward pass (verified against PyTorch to 1e-5).</div>
+  <div class="foot">Compact action-conditioned world model trained on synthetic population dynamics. Part of a benchmarked program (NLB co-bps, FALCON). The browser runs its exact forward pass &mdash; no server, no playback.</div>
 </div>
 <script>
 // Noema world model — forward pass in plain JS, shared by the browser demo and
@@ -189,46 +232,81 @@ function stepModel() {
 
 const raster = document.getElementById('raster'), rx = raster.getContext('2d');
 const pathC = document.getElementById('path'), px = pathC.getContext('2d');
-function drawRaster() {
-  const W = raster.clientWidth, H = 220, T = history.length;
-  raster.width = W; raster.height = H;
-  const cw = W / 90, ch = H / N;
-  for (let x = 0; x < T; x++) for (let y = 0; y < N; y++) {
-    // Fixed scale + gamma: robust to rare high-firing bins, so typical activity
-    // stays visible instead of washing out against an outlier-driven maximum.
-    const u = Math.min(1, (history[x][y] / 6) ** 0.6);
-    rx.fillStyle = `rgb(${20 + u * 40 | 0},${30 + u * 150 | 0},${50 + u * 190 | 0})`;
-    rx.fillRect(x * cw, y * ch, cw + 1, ch + 1);
-  }
+
+// Perceptually-ordered magma ramp: equal firing steps read as equal brightness.
+const MAGMA = [[0,0,4],[40,11,84],[92,18,110],[140,41,129],[190,56,118],[230,84,97],[251,135,97],[254,195,128],[252,253,191]];
+function magma(t, out) {
+  t = t < 0 ? 0 : t > 1 ? 1 : t; const f = t * 8, i = f | 0, u = f - i, a = MAGMA[i], b = MAGMA[i < 8 ? i + 1 : 8];
+  out[0] = (a[0] + (b[0] - a[0]) * u) | 0; out[1] = (a[1] + (b[1] - a[1]) * u) | 0; out[2] = (a[2] + (b[2] - a[2]) * u) | 0;
 }
+
+function drawRaster() {
+  const T = history.length;
+  raster.width = 90; raster.height = N;
+  rx.imageSmoothingEnabled = false;
+  const img = rx.createImageData(90, N), c = [0, 0, 0];
+  for (let x = 0; x < T; x++) for (let y = 0; y < N; y++) {
+    magma(Math.min(1, history[x][y] / 6) ** 0.85, c);
+    const o = (y * 90 + x) * 4;
+    img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+  }
+  rx.putImageData(img, 0, 0);
+}
+
+let head = [0, 0];
 function drawPath() {
-  const W = pathC.clientWidth, H = 180; pathC.width = W; pathC.height = H;
-  px.strokeStyle = '#4b9fff'; px.lineWidth = 1.5; px.beginPath();
-  const cx = W / 2, cy = H / 2, s = 6;
-  path.forEach((p, i) => { const X = cx + p[0] * s, Y = cy - p[1] * s; i ? px.lineTo(X, Y) : px.moveTo(X, Y); });
-  px.stroke();
-  if (path.length) { const p = path[path.length - 1];
-    px.fillStyle = '#e4ebf5'; px.beginPath(); px.arc(cx + p[0] * s, cy - p[1] * s, 3.5, 0, 7); px.fill(); }
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = pathC.clientWidth, H = 200;
+  pathC.width = W * dpr; pathC.height = H * dpr; px.setTransform(dpr, 0, 0, dpr, 0, 0);
+  px.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2, s = 6, n = path.length;
+  px.strokeStyle = '#293040'; px.lineWidth = 1;
+  px.beginPath(); px.moveTo(cx - 6, cy); px.lineTo(cx + 6, cy); px.moveTo(cx, cy - 6); px.lineTo(cx, cy + 6); px.stroke();
+  px.strokeStyle = '#1C2230'; px.beginPath(); px.arc(cx, cy, Math.min(W, H) * 0.42, 0, Math.PI * 2); px.stroke();
+  const gm = Math.hypot(action[0], action[1]);
+  if (gm > 0.01) {
+    px.strokeStyle = 'rgba(88,183,212,.38)'; px.setLineDash([3, 3]); px.lineWidth = 1;
+    px.beginPath(); px.moveTo(cx, cy); px.lineTo(cx + (action[0] / gm) * 46, cy - (action[1] / gm) * 46); px.stroke();
+    px.setLineDash([]);
+  }
+  px.lineCap = 'round'; px.lineJoin = 'round';
+  for (let i = 1; i < n; i++) {
+    const t = i / (n - 1), a = path[i - 1], b = path[i];
+    px.strokeStyle = 'rgba(88,183,212,' + (t * t * 0.9).toFixed(3) + ')'; px.lineWidth = 0.6 + t * 1.6;
+    px.beginPath(); px.moveTo(cx + a[0] * s, cy - a[1] * s); px.lineTo(cx + b[0] * s, cy - b[1] * s); px.stroke();
+  }
+  const X = cx + head[0] * s, Y = cy - head[1] * s;
+  px.fillStyle = '#D5DCE7'; px.beginPath(); px.arc(X, Y, 2.6, 0, Math.PI * 2); px.fill();
+  px.strokeStyle = 'rgba(88,183,212,.55)'; px.lineWidth = 1; px.beginPath(); px.arc(X, Y, 5, 0, Math.PI * 2); px.stroke();
 }
 
 const pad = document.getElementById('pad'), knob = document.getElementById('knob');
+const vector = document.getElementById('vector'), readout = document.getElementById('readout');
 let dragging = false;
 function setAction(ev) {
   const r = pad.getBoundingClientRect();
   let dx = (ev.clientX - r.left - 100) / 100, dy = (ev.clientY - r.top - 100) / 100;
   const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
-  knob.style.left = (83 + dx * 83) + 'px'; knob.style.top = (83 + dy * 83) + 'px';
-  action = [dx * 1.3, -dy * 1.3];   // screen-down is negative velocity; stay in-distribution
+  const mag = Math.min(1, m);
+  knob.style.left = (92 + dx * 92) + 'px'; knob.style.top = (92 + dy * 92) + 'px';
+  vector.style.width = (mag * 92) + 'px'; vector.style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad)';
+  const deg = (Math.round(Math.atan2(-dy, dx) * 180 / Math.PI) + 360) % 360;
+  readout.innerHTML = '\u03B8 ' + (mag > 0.01 ? String(deg).padStart(3, '0') : '---') + '\u00B0 \u00B7 \u2016v\u2016 ' + mag.toFixed(2);
+  action = [dx * 1.3, -dy * 1.3];
 }
-pad.addEventListener('pointerdown', e => { dragging = true; pad.setPointerCapture(e.pointerId); setAction(e); });
+pad.addEventListener('pointerdown', e => { dragging = true; pad.classList.add('grab'); pad.setPointerCapture(e.pointerId); setAction(e); });
 pad.addEventListener('pointermove', e => dragging && setAction(e));
-pad.addEventListener('pointerup', () => { dragging = false; });
+pad.addEventListener('pointerup', () => { dragging = false; pad.classList.remove('grab'); });
 document.getElementById('reset').onclick = () => {
   z = M.seed.z.map(r => r.slice()); a = M.seed.actions.map(r => r.slice());
-  pos = [0, 0]; path.length = 0; history.length = 0;
-  action = [0, 0]; knob.style.left = '83px'; knob.style.top = '83px';
+  pos = [0, 0]; head = [0, 0]; path.length = 0; history.length = 0; action = [0, 0];
+  knob.style.left = '92px'; knob.style.top = '92px'; vector.style.width = '0px';
+  readout.innerHTML = '\u03B8 ---\u00B0 \u00B7 \u2016v\u2016 0.00';
 };
 
-setInterval(() => { stepModel(); drawRaster(); drawPath(); }, 110);
-window.onresize = () => { drawRaster(); drawPath(); };
+setInterval(() => { stepModel(); drawRaster(); }, 110);
+setInterval(() => {
+  if (path.length) { const p = path[path.length - 1]; head = [head[0] + (p[0] - head[0]) * 0.35, head[1] + (p[1] - head[1]) * 0.35]; }
+  drawPath();
+}, 40);
 </script></body></html>
