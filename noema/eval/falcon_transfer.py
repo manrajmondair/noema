@@ -66,6 +66,8 @@ def main():
     p.add_argument("--adapt-lr", type=float, default=3e-4)
     p.add_argument("--adversary", action="store_true", help="domain-adversarial session invariance during training")
     p.add_argument("--adv-weight", type=float, default=1.0)
+    p.add_argument("--input-norm", action="store_true",
+                   help="per-session per-channel gain normalization (equalizes electrode drift, log1p-safe)")
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -77,6 +79,14 @@ def main():
     if args.held_out >= len(sessions):
         raise ValueError(f"only {len(sessions)} sessions; cannot hold out {args.held_out}")
     train_sessions, held_out = sessions[: -args.held_out], sessions[-args.held_out:]
+    if args.input_norm:
+        # Divide each channel by its own session mean firing: equalizes per-channel gain
+        # drift across recording days, keeps counts non-negative for log1p. Unsupervised
+        # (uses only neural), so it applies to unseen sessions too.
+        def _norm(n):
+            return n / (n.mean(0, keepdims=True) + 1e-3)
+        train_sessions = [(nm, _norm(n), k, m) for nm, n, k, m in train_sessions]
+        held_out = [(nm, _norm(n), k, m) for nm, n, k, m in held_out]
     print(f"train on {len(train_sessions)} sessions, transfer to {len(held_out)} unseen: "
           f"{[s for s, *_ in held_out]}", flush=True)
 
