@@ -61,6 +61,9 @@ def main():
     p.add_argument("--steps", type=int, default=6000)
     p.add_argument("--batch", type=int, default=64)
     p.add_argument("--w-behavior", type=float, default=6.0)
+    p.add_argument("--calib-frac", type=float, default=0.5, help="fraction of each held-out session used for calibration")
+    p.add_argument("--adapt-steps", type=int, default=0, help=">0 enables few-shot adaptation on each session's calib split")
+    p.add_argument("--adapt-lr", type=float, default=3e-4)
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -91,12 +94,29 @@ def main():
     train(model, loader, TrainConfig(steps=args.steps, warmup=100, lr=3e-4,
                                      w_behavior=args.w_behavior, ckpt=""), device=device, on_log=log)
 
-    # in-distribution check (a train session) vs zero-shot transfer (held-out sessions)
+    import copy
+
     seen = _score(model, *train_sessions[-1][1:], args.window, vmean, vstd, device)
-    r2s = [_score(model, n, k, m, args.window, vmean, vstd, device) for _, n, k, m in held_out]
     print(f"seen-session R2 = {seen:.3f}", flush=True)
-    print(f"zero-shot cross-session R2 = {np.mean(r2s):.3f} +/- {np.std(r2s):.3f}  "
-          f"per-session {[round(r, 3) for r in r2s]}", flush=True)
+
+    # Score each unseen session on its held-out (eval) portion. Zero-shot uses the
+    # base model; few-shot first adapts a copy on the session's calibration portion.
+    zero, few = [], []
+    for _, n, k, m in held_out:
+        cut = int(len(n) * args.calib_frac)
+        me = None if m is None else m[cut:]
+        zero.append(_score(model, n[cut:], k[cut:], me, args.window, vmean, vstd, device))
+        if args.adapt_steps > 0 and cut > args.window * 4:
+            adapted = copy.deepcopy(model)
+            cds = SpikeWindows(n[:cut], behavior=(k[:cut] - vmean) / vstd, window=args.window)
+            cl = DataLoader(cds, batch_size=args.batch, shuffle=True, collate_fn=cds.collate, drop_last=True)
+            train(adapted, cl, TrainConfig(steps=args.adapt_steps, warmup=10, lr=args.adapt_lr,
+                                           w_behavior=args.w_behavior, ckpt=""), device=device)
+            few.append(_score(adapted, n[cut:], k[cut:], me, args.window, vmean, vstd, device))
+    print(f"zero-shot cross-session R2 = {np.mean(zero):.3f} +/- {np.std(zero):.3f}  {[round(r, 3) for r in zero]}", flush=True)
+    if few:
+        print(f"few-shot ({args.adapt_steps}-step) cross-session R2 = {np.mean(few):.3f} +/- {np.std(few):.3f}  "
+              f"{[round(r, 3) for r in few]}", flush=True)
 
 
 if __name__ == "__main__":
