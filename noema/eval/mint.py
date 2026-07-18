@@ -96,14 +96,8 @@ def _aligned_condition_ids(dataset, name, split, keys):
     return np.asarray(pd.factorize(pd.MultiIndex.from_frame(ti.loc[tids][list(keys)]))[0], dtype=np.int64)
 
 
-def mint_cosmooth_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0,
-                        cond_keys=None, split="val", state_match=False):
-    # Defaults tuned on MC_Maze (select split): condition-mix, sigma=8, temp=20 -> co-bps
-    # 0.328 val (board-clean, == literature MINT). condition-mix beats state-match on real
-    # nlb data because trials are aligned to movement onset (little residual timing jitter);
-    # state-match wins only when trials are time-warped. Re-tune (sigma,temp) per dataset.
-    """Fit the library on train, predict held-out rates for `split`.
-    Returns (heldout_rates [K,T,Nout], heldout_counts [K,T,Nout]) for bits_per_spike."""
+def _load_split(name, cond_keys, path, bin_ms, split):
+    """Return (train_hi, train_ho, train_cond, eval_hi, eval_ho) for `split`."""
     import os
 
     from nlb_tools.make_tensors import make_train_input_tensors
@@ -115,22 +109,54 @@ def mint_cosmooth_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0,
     d.resample(bin_ms)
     tr = make_train_input_tensors(d, name, trial_split="train", save_file=False)
     ev = make_train_input_tensors(d, name, trial_split=split, save_file=False)
-    tr_hi, tr_ho = tr["train_spikes_heldin"], tr["train_spikes_heldout"]
-    ev_hi, ev_ho = ev["train_spikes_heldin"], ev["train_spikes_heldout"]
-    n_in = tr_hi.shape[-1]
-
     keys = cond_keys or (["trial_type", "trial_version"] if name == "mc_maze" else None)
     if keys is None:
         raise ValueError("pass cond_keys — the trial_info columns defining conditions")
     cond_tr = _aligned_condition_ids(d, name, "train", keys)
-    if len(cond_tr) != tr_hi.shape[0]:
-        raise ValueError(f"condition/trial mismatch: {len(cond_tr)} vs {tr_hi.shape[0]}")
+    if len(cond_tr) != tr["train_spikes_heldin"].shape[0]:
+        raise ValueError(f"condition/trial mismatch: {len(cond_tr)} vs {tr['train_spikes_heldin'].shape[0]}")
+    return (tr["train_spikes_heldin"], tr["train_spikes_heldout"], cond_tr,
+            ev["train_spikes_heldin"], ev["train_spikes_heldout"])
 
-    lib_full, _ = build_library(np.concatenate([tr_hi, tr_ho], -1), cond_tr, sigma)
-    lib_hi = lib_full[..., :n_in]
+
+def _predict(train_full, train_cond, test_hi, n_in, sigma, temp, state_match):
+    lib = build_library(train_full, train_cond, sigma)[0]
     infer = infer_state_match if state_match else infer_condition_mix
-    rates = infer(ev_hi, lib_hi, lib_full, temp=temp)
-    return rates[..., n_in:], ev_ho
+    return infer(test_hi, lib[..., :n_in], lib, temp=temp)[..., n_in:]
+
+
+def mint_cosmooth_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0,
+                        cond_keys=None, split="val", state_match=False):
+    """Fit the library on train, predict held-out rates for `split`. Returns
+    (heldout_rates [K,T,Nout], heldout_counts [K,T,Nout]) for bits_per_spike.
+
+    Defaults tuned on MC_Maze (select split): condition-mix, sigma=8, temp=20 -> co-bps
+    0.328 val (board-clean, == literature MINT). condition-mix beats state-match on real
+    nlb data because trials are aligned to movement onset (little residual timing jitter);
+    state-match wins only when trials are time-warped. Re-tune (sigma,temp) per dataset."""
+    tr_hi, tr_ho, cond_tr, ev_hi, ev_ho = _load_split(name, cond_keys, path, bin_ms, split)
+    full = np.concatenate([tr_hi, tr_ho], -1)
+    return _predict(full, cond_tr, ev_hi, tr_hi.shape[-1], sigma, temp, state_match), ev_ho
+
+
+def mint_member_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0, cond_keys=None,
+                      select_frac=0.85, select_seed=0, state_match=False):
+    """MINT held-out rates as an ensemble member, aligned to the transformer members.
+    Library on the CORE train trials -> predict the SELECT trials (for greedy selection);
+    library on FULL train -> predict VAL (for reporting). The core/select partition
+    replicates dataset.split_trials(frac=select_frac, seed=select_seed) exactly, so MINT's
+    rates line up trial-for-trial with `member_rates(models, select/val)`.
+    Returns (sel_rates, sel_targets, val_rates, val_targets), all numpy [K,T,Nout]."""
+    import torch
+
+    tr_hi, tr_ho, cond_tr, va_hi, va_ho = _load_split(name, cond_keys, path, bin_ms, "val")
+    n_in = tr_hi.shape[-1]
+    full = np.concatenate([tr_hi, tr_ho], -1)
+    perm = torch.randperm(len(tr_hi), generator=torch.Generator().manual_seed(select_seed)).numpy()
+    core, sel = perm[:int(len(tr_hi) * select_frac)], perm[int(len(tr_hi) * select_frac):]
+    sel_rates = _predict(full[core], cond_tr[core], tr_hi[sel], n_in, sigma, temp, state_match)
+    val_rates = _predict(full, cond_tr, va_hi, n_in, sigma, temp, state_match)
+    return sel_rates, tr_ho[sel], val_rates, va_ho
 
 
 if __name__ == "__main__":  # synthetic self-test, no data dependency

@@ -43,6 +43,7 @@ def main():
     p.add_argument("--path", required=True)
     p.add_argument("--bin-ms", type=int, default=5)
     p.add_argument("--heads", type=int, default=8)
+    p.add_argument("--mint", action="store_true", help="add the MINT trajectory-library member (decorrelated)")
     args = p.parse_args()
 
     val = load_nlb(args.path, args.name, args.bin_ms, split="val")
@@ -59,6 +60,21 @@ def main():
     # Greedy-select members and tune smoothing on the held-out set; report once on val.
     sel_r, sel_t = member_rates(models, select, device=device)
     val_r, val_t = member_rates(models, val, device=device)
+
+    # MINT: a decorrelated (non-NN) member. Its rates are built on the same core/select/val
+    # trials the transformers use (mint_member_rates replicates split_trials seed 0), so they
+    # append directly to the greedy pool. Assert trial alignment via the shared targets.
+    if args.mint:
+        import numpy as np
+
+        from .mint import mint_member_rates
+        m_sel, m_sel_t, m_val, m_val_t = mint_member_rates(args.path, args.name, args.bin_ms)
+        assert np.allclose(m_sel_t, sel_t.numpy()) and np.allclose(m_val_t, val_t.numpy()), \
+            "MINT/transformer trial misalignment — check split_trials seed/frac"
+        sel_r.append(torch.as_tensor(m_sel, dtype=torch.float32))
+        val_r.append(torch.as_tensor(m_val, dtype=torch.float32))
+        print("added MINT member (decorrelated trajectory library)", flush=True)
+
     chosen = greedy_ensemble(sel_r, sel_t)
     sel_avg = sum(sel_r[j] for j in chosen) / len(chosen)
     val_avg = sum(val_r[j] for j in chosen) / len(chosen)
