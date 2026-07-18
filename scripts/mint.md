@@ -38,7 +38,23 @@ Env note (nlb_tools vs modern pandas): needs `numpy<2`, `pandas==2.0.3`, and thr
 `index.freq`, and `searchsorted` slicing in `make_trial_df`. (On the cluster's pandas-1.3.4
 conda env these are unnecessary.)
 
-## Next: fold into the ensemble (needs the transformer checkpoints)
+## Integration validated end-to-end (real data)
+
+`ensemble_run --mint` was verified on real MC_Maze against three CPU-trained transformer
+members (weak: co-bps 0.135–0.187). The MINT/transformer trial-alignment assertion passed,
+and greedy correctly selected MINT over the weak members:
+
+| ensemble | co-bps (val) |
+|---|---|
+| 3 CPU transformers only | 0.2071 |
+| + MINT | 0.3284 |
+
+The large jump here reflects weak transformers (greedy picks MINT alone) — it confirms the
+integration is correct, not that MINT lifts a *strong* ensemble. With the cluster's members
+(~0.33 ensemble, comparable to MINT) greedy would blend them for a smaller gain toward a
+higher absolute (est. ~0.34–0.35).
+
+## Next: fold into the strong ensemble (needs the transformer checkpoints)
 
 Add MINT's held-out rates as an extra member in `ensemble_run`/`submission` greedy
 selection: MINT val rates align with the transformer members' val rates (same
