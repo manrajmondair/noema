@@ -37,6 +37,27 @@ def test_multistep_loss_is_opt_in_and_rolls_out():
         assert torch.isfinite(ms) and ms.item() > 0
 
 
+def test_ssm_kernel_matches_sequential_and_reconstructs():
+    from noema.eval.ensemble_run import build_from_state
+    from noema.models.ssm import DiagonalSSM
+
+    # the parallel materialized-kernel form must equal the sequential recurrence
+    torch.manual_seed(0)
+    m = DiagonalSSM(dim=24, state=48)
+    u = torch.randn(3, 18, 24)
+    assert torch.allclose(m(u), m.sequential(u), atol=1e-4)
+
+    # an SSM-encoder Noema builds, runs, and round-trips through build_from_state
+    counts, unit_ids, _ = synthetic_batch(batch=4, steps=16, units=30)
+    hi, in_ids, out_ids = counts[..., :20], unit_ids[:20], unit_ids[20:]
+    model = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=32, ssm=True)
+    model.eval()
+    rebuilt, desc = build_from_state(model.state_dict(), max_units=32, heads=4)
+    assert "ssm" in desc
+    rebuilt.eval()
+    assert torch.allclose(model.cosmooth(hi, in_ids, out_ids), rebuilt.cosmooth(hi, in_ids, out_ids), atol=1e-5)
+
+
 def test_contrastive_loss_is_opt_in_and_finite():
     counts, unit_ids, _ = synthetic_batch(batch=6, steps=18, units=30)
     off = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=32)

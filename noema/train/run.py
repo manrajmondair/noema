@@ -43,7 +43,7 @@ def pretrain(args):
 
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
                   heads=args.heads, max_units=max_units, sessions=n_sessions, spatial=args.spatial,
-                  neuron_mask_ratio=args.neuron_mask, cross=args.cross, attn_pool=args.attn_pool, contrastive=args.contrastive)
+                  neuron_mask_ratio=args.neuron_mask, cross=args.cross, attn_pool=args.attn_pool, contrastive=args.contrastive, ssm=args.ssm)
     run = wandb_run(args)
     train(model, batches, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt), on_log=logger(run))
     if run:
@@ -60,7 +60,7 @@ def fit(args):
         max_units = max(max_units, state["tokenizer.embed.weight"].shape[0])
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
                   heads=args.heads, max_units=max_units, behavior_dim=behavior_dim, spatial=args.spatial,
-                  neuron_mask_ratio=args.neuron_mask, cross=args.cross, attn_pool=args.attn_pool, contrastive=args.contrastive)
+                  neuron_mask_ratio=args.neuron_mask, cross=args.cross, attn_pool=args.attn_pool, contrastive=args.contrastive, ssm=args.ssm)
     if state is not None:  # warm-start backbone + shared unit embeddings; fresh heads stay fresh
         model.load_state_dict(state, strict=False)
 
@@ -108,6 +108,7 @@ def main():
     p.add_argument("--cross", action="store_true", help="cross-attention co-smoothing readout (spatial only)")
     p.add_argument("--attn-pool", action="store_true", help="attention pool per-unit tokens into the latent (spatial only)")
     p.add_argument("--contrastive", action="store_true", help="add InfoNCE representation loss (STNDT-style)")
+    p.add_argument("--ssm", action="store_true", help="diagonal state-space temporal encoder (S5/LRU-style)")
     p.add_argument("--w-contrastive", type=float, default=1.0, help="weight on the contrastive loss")
     p.add_argument("--wandb", action="store_true")
     args = p.parse_args()
