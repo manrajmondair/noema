@@ -46,7 +46,7 @@ class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
                  adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False,
-                 multistep=0, attn_pool=False, contrastive=False, contrastive_temp=0.1, ssm=False):
+                 multistep=0, attn_pool=False, contrastive=False, contrastive_temp=0.1, ssm=False, ssm_state=128):
         super().__init__()
         self.spatial = spatial
         self.neuron_mask_ratio = neuron_mask_ratio
@@ -58,7 +58,7 @@ class Noema(nn.Module):
             self.encoder = SpatioTemporalEncoder(dim, enc_depth, heads)
         elif ssm:  # diagonal state-space temporal encoder (S5/LRU-style)
             from .ssm import SSMEncoder
-            self.encoder = SSMEncoder(dim, enc_depth, heads)
+            self.encoder = SSMEncoder(dim, enc_depth, heads, ssm_state)
         else:
             self.encoder = TemporalEncoder(dim, enc_depth, heads)
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
