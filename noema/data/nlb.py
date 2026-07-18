@@ -49,9 +49,11 @@ def load_nlb(path, name="mc_maze", bin_ms=5, window=None, split="train"):
     from nlb_tools.make_tensors import make_train_input_tensors
 
     dataset = _load_resampled(path, bin_ms)
+    import os
+    _beh = os.environ.get("NOEMA_NO_BEHAVIOR") != "1"
     tensors = make_train_input_tensors(
         dataset, dataset_name=name, trial_split=split,
-        save_file=False, include_behavior=True,
+        save_file=False, include_behavior=_beh,
     )
     behavior, stats = tensors.get("train_behavior"), None
     if behavior is not None:
