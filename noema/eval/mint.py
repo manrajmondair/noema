@@ -159,6 +159,37 @@ def mint_member_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0, cond
     return sel_rates, tr_ho[sel], val_rates, va_ho
 
 
+def mint_all_rates(dataset, name="mc_maze", sigma=8.0, temp=20.0, cond_keys=None):
+    """MINT held-in + held-out rates for every submission split, as a first-class ensemble
+    member. The library is built on train only (no val/test leakage; train's ~16 trials/
+    condition is ample) and used to predict val (for greedy selection), train (in-sample,
+    for the train_rates outputs) and the sequestered test. `dataset` is an already-resampled
+    NWBDataset. Returns a dict of numpy arrays keyed val_ho / {test,train}_{hi,ho}."""
+    from nlb_tools.make_tensors import make_eval_input_tensors, make_train_input_tensors
+
+    keys = cond_keys or (["trial_type", "trial_version"] if name == "mc_maze" else None)
+    if keys is None:
+        raise ValueError("pass cond_keys — the trial_info columns defining conditions")
+    tr = make_train_input_tensors(dataset, name, trial_split="train", save_file=False)
+    va = make_train_input_tensors(dataset, name, trial_split="val", save_file=False)
+    te_hi = make_eval_input_tensors(dataset, name, trial_split="test", save_file=False)["eval_spikes_heldin"]
+    tr_hi, tr_ho = tr["train_spikes_heldin"], tr["train_spikes_heldout"]
+    n_in = tr_hi.shape[-1]
+    cond_tr = _aligned_condition_ids(dataset, name, "train", keys)
+    lib = build_library(np.concatenate([tr_hi, tr_ho], -1), cond_tr, sigma)[0]
+    lib_hi = lib[..., :n_in]
+
+    def pred(test_hi):
+        return infer_condition_mix(test_hi, lib_hi, lib, temp)
+
+    val_p, train_p, test_p = pred(va["train_spikes_heldin"]), pred(tr_hi), pred(te_hi)
+    return {
+        "val_ho": val_p[..., n_in:],
+        "test_hi": test_p[..., :n_in], "test_ho": test_p[..., n_in:],
+        "train_hi": train_p[..., :n_in], "train_ho": train_p[..., n_in:],
+    }, va["train_spikes_heldout"]
+
+
 if __name__ == "__main__":  # synthetic self-test, no data dependency
     def _bps(rates, counts):
         rates = np.clip(rates, 1e-8, None)

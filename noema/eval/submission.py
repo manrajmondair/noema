@@ -71,7 +71,7 @@ def _forward(models, spikes, in_ids, out_ids, device, fp_steps):
     return torch.cat(hif).numpy(), torch.cat(hof).numpy()
 
 
-def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False):
+def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False, mint=False):
     import os
 
     from nlb_tools.make_tensors import make_eval_input_tensors, make_train_input_tensors, save_to_h5
@@ -107,16 +107,43 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False)
     val = make_train_input_tensors(dataset, name, trial_split="val", save_file=False)
     val_member = [_cosmooth([m], val["train_spikes_heldin"], in_ids, out_ids, device) for m in models]
     val_ho = torch.as_tensor(val["train_spikes_heldout"], dtype=torch.float32)
+
+    # MINT: a decorrelated trajectory-library member. Predicts held-in+held-out rates for
+    # val (greedy), train, and the sequestered test from a train-only library. Appended as
+    # the last member (index len(models)); greedy may pick it, count-weighted, with the rest.
+    mint_rates = None
+    if mint:
+        import numpy as np
+
+        from .mint import mint_all_rates
+        mint_rates, mint_val_ho = mint_all_rates(dataset, name)
+        assert np.allclose(mint_val_ho, val["train_spikes_heldout"]), "MINT/transformer val trial misalignment"
+        val_member.append(torch.as_tensor(mint_rates["val_ho"], dtype=torch.float32))
+
     chosen = greedy_ensemble(val_member, val_ho)
-    models = [models[j] for j in chosen]
     sel_val = sum(val_member[j] for j in chosen) / len(chosen)
     sigmas = (0.0, 1.0, 1.5, 2.0, 2.5, 3.0)
     sigma = max(sigmas, key=lambda s: bits_per_spike(gaussian_smooth(sel_val, s), val_ho))
-    print(f"greedy selected {len(chosen)} picks from {len(val_member)} members, smoothing sigma={sigma}", flush=True)
+    n_mint, tot = len(models), len(chosen)
+    tf_picks = [models[j] for j in chosen if j != n_mint]   # transformer picks (with repeats)
+    mc = chosen.count(n_mint) if mint else 0
+    print(f"greedy selected {tot} picks from {len(val_member)} members (mint picks={mc}), "
+          f"smoothing sigma={sigma}", flush=True)
 
     smooth = lambda a: gaussian_smooth(torch.as_tensor(a, dtype=torch.float32), sigma).numpy()
-    er_hi, er_ho = (smooth(r) for r in _rates(models, eval_hi, in_ids, out_ids, device))
-    tr_hi, tr_ho = (smooth(r) for r in _rates(models, train["train_spikes_heldin"], in_ids, out_ids, device))
+
+    def blend(tf_input, mint_hi, mint_ho):
+        # count-weighted mean over chosen members: transformer picks via _rates, MINT (mc
+        # copies) via its precomputed rates. Reduces to the plain transformer mean when mc=0.
+        n = len(tf_picks)
+        hi, ho = _rates(tf_picks, tf_input, in_ids, out_ids, device) if n else (0.0, 0.0)
+        if mc:
+            hi, ho = (hi * n + mc * mint_hi) / tot, (ho * n + mc * mint_ho) / tot
+        return smooth(hi), smooth(ho)
+
+    mr = mint_rates or {}
+    er_hi, er_ho = blend(eval_hi, mr.get("test_hi"), mr.get("test_ho"))
+    tr_hi, tr_ho = blend(train["train_spikes_heldin"], mr.get("train_hi"), mr.get("train_ho"))
     submission = {name: {
         "eval_rates_heldin": er_hi, "eval_rates_heldout": er_ho,
         "train_rates_heldin": tr_hi, "train_rates_heldout": tr_ho,
@@ -127,9 +154,9 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False)
     # trained for multi-step rollout, else omit fp and score co-bps + vel + PSTH only.
     if forward:
         from nlb_tools.make_tensors import PARAMS
-        fp_steps = int(PARAMS[name]["fp_len"] // bin_ms)
-        ef_hi, ef_ho = (smooth(r) for r in _forward(models, eval_hi, in_ids, out_ids, device, fp_steps))
-        tf_hi, tf_ho = (smooth(r) for r in _forward(models, train["train_spikes_heldin"], in_ids, out_ids, device, fp_steps))
+        fp_steps = int(PARAMS[name]["fp_len"] // bin_ms)  # MINT has no rollout -> forward uses transformer picks only
+        ef_hi, ef_ho = (smooth(r) for r in _forward(tf_picks, eval_hi, in_ids, out_ids, device, fp_steps))
+        tf_hi, tf_ho = (smooth(r) for r in _forward(tf_picks, train["train_spikes_heldin"], in_ids, out_ids, device, fp_steps))
         submission[name].update({
             "eval_rates_heldin_forward": ef_hi, "eval_rates_heldout_forward": ef_ho,
             "train_rates_heldin_forward": tf_hi, "train_rates_heldout_forward": tf_ho,
@@ -148,8 +175,10 @@ def main():
     p.add_argument("--out", default="submission.h5")
     p.add_argument("--bin-ms", type=int, default=5)
     p.add_argument("--forward", action="store_true", help="include fp-bps forward rates (needs a multi-step world model)")
+    p.add_argument("--mint", action="store_true", help="add the MINT trajectory-library member (decorrelated)")
     args = p.parse_args()
-    make_submission(args.ckpts.split(","), args.path, args.name, args.out, args.bin_ms, forward=args.forward)
+    make_submission(args.ckpts.split(","), args.path, args.name, args.out, args.bin_ms,
+                    forward=args.forward, mint=args.mint)
 
 
 if __name__ == "__main__":
