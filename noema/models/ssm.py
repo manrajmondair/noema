@@ -10,43 +10,67 @@ import torch
 from torch import nn
 
 
-class DiagonalSSM(nn.Module):
-    def __init__(self, dim: int, state: int = 128):
+class _Dir(nn.Module):
+    """One diagonal-SSM direction: x_t = A x_{t-1} + B u_t, returns Re(C x_t) (no skip).
+    Computed as a causal convolution with kernel A^j (materialized, fully parallel)."""
+
+    def __init__(self, dim: int, state: int):
         super().__init__()
-        # stable long-memory init: |A| ~ U[0.9, 0.999], small phase (slow modes)
         r = torch.rand(state)
-        self.nu = torch.nn.Parameter(torch.log(-torch.log(0.9 + 0.099 * r)))  # |A| = exp(-exp(nu))
-        self.theta = torch.nn.Parameter(torch.rand(state) * 0.1)
-        self.B = torch.nn.Parameter(torch.randn(state, dim) / dim ** 0.5)
-        self.C = torch.nn.Parameter(torch.randn(dim, state, 2) / state ** 0.5)  # real/imag
-        self.D = torch.nn.Parameter(torch.ones(dim))
+        self.nu = nn.Parameter(torch.log(-torch.log(0.9 + 0.099 * r)))  # |A| = exp(-exp(nu)) in [0.9,0.999]
+        self.theta = nn.Parameter(torch.rand(state) * 0.1)
+        self.B = nn.Parameter(torch.randn(state, dim) / dim ** 0.5)
+        self.C = nn.Parameter(torch.randn(dim, state, 2) / state ** 0.5)
 
-    def _log_A(self):
-        return -torch.exp(self.nu) + 1j * self.theta  # [state] complex
+    def log_A(self):
+        return -torch.exp(self.nu) + 1j * self.theta
 
-    def forward(self, u):  # u [B,T,dim] -> [B,T,dim]
+    def forward(self, u):
         T = u.size(1)
         j = torch.arange(T, device=u.device)
-        kernel = torch.exp(j[:, None] * self._log_A()[None, :])         # [T,state] = A^j
+        kernel = torch.exp(j[:, None] * self.log_A()[None, :])          # [T,state] = A^j
         Bu = u.to(torch.complex64) @ self.B.t().to(torch.complex64)      # [B,T,state]
-        d = (j[:, None] - j[None, :]).clamp(min=0)                       # [T,T] = t-k
+        d = (j[:, None] - j[None, :]).clamp(min=0)
         K = torch.where((j[:, None] >= j[None, :])[..., None], kernel[d], torch.zeros_like(kernel[0, 0]))
-        x = torch.einsum("tks,bks->bts", K, Bu)                         # [B,T,state] complex
-        C = torch.view_as_complex(self.C.contiguous())                  # [dim,state]
-        return torch.einsum("bts,ds->btd", x, C).real + self.D * u
+        x = torch.einsum("tks,bks->bts", K, Bu)
+        return torch.einsum("bts,ds->btd", x, torch.view_as_complex(self.C.contiguous())).real
 
     @torch.no_grad()
-    def sequential(self, u):  # reference recurrence for the correctness test
-        B, T, _ = u.shape
-        A = torch.exp(self._log_A())
+    def sequential(self, u):
+        A = torch.exp(self.log_A())
         Bu = u.to(torch.complex64) @ self.B.t().to(torch.complex64)
         C = torch.view_as_complex(self.C.contiguous())
-        x = torch.zeros(B, self.B.shape[0], dtype=torch.complex64, device=u.device)
+        x = torch.zeros(u.size(0), self.B.shape[0], dtype=torch.complex64, device=u.device)
         out = []
-        for t in range(T):
+        for t in range(u.size(1)):
             x = A * x + Bu[:, t]
-            out.append((x @ C.t()).real + self.D * u[:, t])
+            out.append((x @ C.t()).real)
         return torch.stack(out, 1)
+
+
+class DiagonalSSM(nn.Module):
+    """Diagonal state-space layer. Bidirectional by default: a forward (past-context) and a
+    backward (future-context) direction are summed, so the encoder sees the whole trial —
+    the co-bps encoder is not autoregressive, so full context helps (like the transformer)."""
+
+    def __init__(self, dim: int, state: int = 128, bidirectional: bool = True):
+        super().__init__()
+        self.fwd = _Dir(dim, state)
+        self.bwd = _Dir(dim, state) if bidirectional else None
+        self.D = nn.Parameter(torch.ones(dim))
+
+    def forward(self, u):  # [B,T,dim] -> [B,T,dim]
+        y = self.fwd(u)
+        if self.bwd is not None:
+            y = y + self.bwd(u.flip(1)).flip(1)
+        return y + self.D * u
+
+    @torch.no_grad()
+    def sequential(self, u):  # reference for the correctness test (matches forward)
+        y = self.fwd.sequential(u)
+        if self.bwd is not None:
+            y = y + self.bwd.sequential(u.flip(1)).flip(1)
+        return y + self.D * u
 
 
 class SSMBlock(nn.Module):
