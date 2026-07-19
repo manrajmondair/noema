@@ -88,14 +88,23 @@ class SSMBlock(nn.Module):
 
 class SSMEncoder(nn.Module):
     """Drop-in for TemporalEncoder: same (x, causal) call, [B,T,dim] -> [B,T,dim].
-    Causal by construction (the kernel is lower-triangular), so `causal` is ignored."""
+    With hybrid=True, odd layers are bidirectional-attention blocks — combining the
+    state-space temporal dynamics with attention over time (each buys a different bias)."""
 
-    def __init__(self, dim: int, depth: int, heads: int, state: int = 128):
+    def __init__(self, dim: int, depth: int, heads: int, state: int = 128, hybrid: bool = False):
         super().__init__()
-        self.blocks = nn.ModuleList(SSMBlock(dim, state) for _ in range(depth))
+        from .encoder import Block
+        self.hybrid = hybrid
+        self.blocks = nn.ModuleList(
+            (Block(dim, heads) if (hybrid and i % 2 == 1) else SSMBlock(dim, state)) for i in range(depth))
         self.norm = nn.LayerNorm(dim)
+        self.head_dim = dim // heads
 
     def forward(self, x, causal: bool = False):
+        cos = sin = None
+        if self.hybrid:
+            from .encoder import rotary_tables
+            cos, sin = rotary_tables(self.head_dim, x.size(1), x.device)
         for block in self.blocks:
-            x = block(x)
+            x = block(x) if hasattr(block, "ssm") else block(x, cos, sin, causal)  # SSMBlock vs attention Block
         return self.norm(x)
