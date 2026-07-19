@@ -9,7 +9,7 @@ from torch import nn
 from .adversary import SessionAdversary
 from .coupling import SensoryEncoder
 from .encoder import SpatioTemporalEncoder, TemporalEncoder
-from .heads import AttentionPool, BehaviorHead, CrossReadout
+from .heads import AttentionPool, BehaviorHead, CrossReadout, FiLMReadout
 from .tokenizer import PopulationTokenizer
 from .world_model import WorldModel
 
@@ -46,7 +46,8 @@ class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
                  adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False,
-                 multistep=0, attn_pool=False, contrastive=False, contrastive_temp=0.1, ssm=False, ssm_state=128, hybrid=False):
+                 multistep=0, attn_pool=False, contrastive=False, contrastive_temp=0.1, ssm=False, ssm_state=128, hybrid=False,
+                 film=False):
         super().__init__()
         self.spatial = spatial
         self.neuron_mask_ratio = neuron_mask_ratio
@@ -64,6 +65,7 @@ class Noema(nn.Module):
         self.world = WorldModel(dim, wm_depth, heads, action_dim)
         self.behavior = BehaviorHead(dim, behavior_dim) if behavior_dim else None
         self.cross = CrossReadout(dim, heads) if (spatial and cross) else None  # per-unit co-smoothing
+        self.film = FiLMReadout(dim) if film else None  # nonlinear held-out readout (vs linear decode)
         # Content-weighted pool of the per-unit tokens into the shared latent (spatial only);
         # falls back to a mean when off. The teacher mirrors it so the JEPA target lives in
         # the same latent space the world model predicts.
@@ -96,17 +98,22 @@ class Noema(nn.Module):
             return self.teacher_pooler(tok) if self.teacher_pooler is not None else tok.mean(2)
         return self.teacher(self.tokenizer.encode(counts, unit_ids))
 
+    def _film(self, z, target_unit_ids):
+        return self.film(z, self.tokenizer.readout(target_unit_ids),
+                         self.tokenizer.bias(target_unit_ids).squeeze(-1))
+
     def cosmooth(self, counts, unit_ids, target_unit_ids):
         """Log-rates for held-out (co-smoothing) units, given only held-in spikes."""
         if self.cross is not None:
             tokens = self.encoder(self.tokenizer.encode_units(counts, unit_ids))
             return self.cross(tokens, self.tokenizer.readout(target_unit_ids))
-        return self.tokenizer.decode(self.encode(counts, unit_ids), target_unit_ids)
+        z = self.encode(counts, unit_ids)
+        return self._film(z, target_unit_ids) if self.film is not None else self.tokenizer.decode(z, target_unit_ids)
 
     def _cosmooth_from(self, tokens, z, target_unit_ids):
         if self.cross is not None:
             return self.cross(tokens, self.tokenizer.readout(target_unit_ids))
-        return self.tokenizer.decode(z, target_unit_ids)
+        return self._film(z, target_unit_ids) if self.film is not None else self.tokenizer.decode(z, target_unit_ids)
 
     def forward(self, counts, unit_ids, actions=None, behavior=None,
                 target_counts=None, target_unit_ids=None, session=None, context=None):

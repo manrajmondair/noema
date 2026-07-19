@@ -3,6 +3,25 @@ import torch.nn.functional as F
 from torch import nn
 
 
+class FiLMReadout(nn.Module):
+    """Nonlinear per-unit co-smoothing readout. A shared nonlinear feature of the latent z
+    is modulated per held-out unit (FiLM, using that unit's readout embedding as the scale),
+    then projected to a log-rate. Strictly more expressive than the linear z @ readout dot-
+    product — attacks the pooled-linear-readout ceiling that caps single models at ~0.333.
+    Held-out only (small unit set), so the [B,T,M,D] modulation stays memory-bounded."""
+
+    def __init__(self, dim: int):
+        super().__init__()
+        self.feat = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, dim), nn.GELU())
+        self.out = nn.Linear(dim, 1)
+
+    def forward(self, z, unit_embeds, unit_bias):
+        # z [B,T,D], unit_embeds [M,D] (per-unit FiLM scale), unit_bias [M] -> log-rate [B,T,M]
+        h = self.feat(z)                                  # [B,T,D] shared nonlinear feature
+        mod = h[:, :, None, :] * unit_embeds[None, None]  # [B,T,M,D] per-unit modulation
+        return self.out(mod).squeeze(-1) + unit_bias
+
+
 class AttentionPool(nn.Module):
     """Pool per-unit tokens [B,T,N,D] into the shared latent [B,T,D] with a learned
     query attending over the unit set — a content-weighted summary that keeps which

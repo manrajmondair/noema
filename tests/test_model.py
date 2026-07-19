@@ -58,6 +58,22 @@ def test_ssm_kernel_matches_sequential_and_reconstructs():
     assert torch.allclose(model.cosmooth(hi, in_ids, out_ids), rebuilt.cosmooth(hi, in_ids, out_ids), atol=1e-5)
 
 
+def test_film_readout_nonlinear_and_reconstructs():
+    from noema.eval.ensemble_run import build_from_state
+
+    counts, unit_ids, _ = synthetic_batch(batch=4, steps=16, units=30)
+    hi, in_ids, out_ids = counts[..., :20], unit_ids[:20], unit_ids[20:]
+    m = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=32, ssm=True, film=True)
+    m.eval()
+    # the FiLM co-smoothing readout is genuinely nonlinear (differs from the linear decode)
+    z = m.encode(hi, in_ids)
+    assert not torch.allclose(m.cosmooth(hi, in_ids, out_ids), m.tokenizer.decode(z, out_ids), atol=1e-3)
+    # and round-trips through build_from_state (film auto-detected from weights)
+    r, _ = build_from_state(m.state_dict(), max_units=32, heads=4)
+    r.eval()
+    assert torch.allclose(m.cosmooth(hi, in_ids, out_ids), r.cosmooth(hi, in_ids, out_ids), atol=1e-5)
+
+
 def test_contrastive_loss_is_opt_in_and_finite():
     counts, unit_ids, _ = synthetic_batch(batch=6, steps=18, units=30)
     off = Noema(dim=48, enc_depth=2, wm_depth=1, heads=4, max_units=32)
