@@ -6,6 +6,32 @@ sigma is tuned the same way; the selected members' count-weighted mean rates (he
 via each member's own readout, held-out via co-smoothing) are written for the test and
 train splits, scoring co-bps + velocity + PSTH.
 
+## Best ensemble (submission_v4.h5) — full member pool
+
+19-member pool + MINT, ensemble co-bps = **~0.37 on our val split (dev, NOT EvalAI test)**.
+Reproduce: `python -m noema.eval.submission --ckpts <pool> --path data/mc_maze --out submission_v4.h5 --mint`
+
+| member family | count | config | note |
+|---|---|---|---|
+| temporal transformer | 4 | dim256 enc6 | noema-honest-s0..s3 |
+| temporal width | 2 | dim192, dim320 | noema-honest-d192/d320 |
+| temporal neuron-mask | 2 | dim256, nmask 0.25 | noema-honest-nm4/nm5 |
+| spatial + cross-readout | 2 | dim256 enc3 | noema-cross-s0/s1 |
+| **bidirectional SSM** | 8+ | dim256 enc6 state128 (+ enc8/enc10/state256/nmask/40k variants) | noema-bissm-* (`--ssm`) |
+| MINT trajectory library | 1 | sigma 8, temp 20 | non-NN, `--mint` |
+
+All temporal/SSM members: `heads=8`, 5 ms bins, checkpoint-selected on a train-carved
+select split. `--ssm` = state-space encoder (best single ~0.333 val); `--ssm-state N` for
+state size; `--hybrid` interleaves attention (no gain over pure SSM). Checkpoints are
+gitignored — **pin their hashes before quoting this number durably** (review-board item).
+
+### MANDATORY caveats when quoting the ensemble number (review board #4)
+1. It is our **val split (dev)**, not the EvalAI **test** split. Only an EvalAI upload is leaderboard-legitimate.
+2. **No SOTA/tier claim.** Even on val it is below the top band (S5 0.382, DLFM 0.378, STNDT/GRAFT 0.386 — all test). Honest **test estimate ~0.31–0.34 (AutoLFADS-tier 0.336 at best)** after the val→test discount + hand-curated-pool optimism.
+3. **No CI** (seed spread ~0.02 > top-leaderboard gaps): quote "~0.37 val", never 4 sig figs.
+4. The architecture pool was hand-curated on val-dev feedback (researcher-level selection-on-reported-split) — disclose.
+5. Metric is bit-exact vs nlb_tools; pipeline is leak-free; but leaderboard-comparability requires the EvalAI test submission.
+
 The forward-rollout keys (fp-bps) are omitted by default (`--forward` to opt in): a
 one-step-trained ensemble diverges in open loop, so its rollout is unreliable and would
 poison the mean. Only include fp with a world model trained for multi-step rollout.
