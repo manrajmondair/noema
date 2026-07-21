@@ -47,7 +47,7 @@ class Noema(nn.Module):
                  action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
                  adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False,
                  multistep=0, attn_pool=False, contrastive=False, contrastive_temp=0.1, ssm=False, ssm_state=128, hybrid=False,
-                 film=False):
+                 film=False, graft=False):
         super().__init__()
         self.spatial = spatial
         self.neuron_mask_ratio = neuron_mask_ratio
@@ -59,7 +59,7 @@ class Noema(nn.Module):
         # the clean z that the linear rate readout decodes (contrasting z directly collapsed
         # co-bps — the readout and the contrastive objective fought over the same vector).
         self.contrastive_proj = nn.Sequential(nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim)) if contrastive else None
-        self.tokenizer = PopulationTokenizer(dim, max_units)
+        self.tokenizer = PopulationTokenizer(dim, max_units, graft)
         if spatial:
             self.encoder = SpatioTemporalEncoder(dim, enc_depth, heads)
         elif ssm:  # diagonal state-space temporal encoder (S5/LRU-style)

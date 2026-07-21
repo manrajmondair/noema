@@ -43,7 +43,7 @@ def pretrain(args):
 
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
                   heads=args.heads, max_units=max_units, sessions=n_sessions, spatial=args.spatial,
-                  neuron_mask_ratio=args.neuron_mask, cross=args.cross, attn_pool=args.attn_pool, contrastive=args.contrastive, ssm=args.ssm, ssm_state=args.ssm_state, hybrid=args.hybrid, film=args.film)
+                  neuron_mask_ratio=args.neuron_mask, cross=args.cross, attn_pool=args.attn_pool, contrastive=args.contrastive, ssm=args.ssm, ssm_state=args.ssm_state, hybrid=args.hybrid, film=args.film, graft=args.graft)
     run = wandb_run(args)
     train(model, batches, TrainConfig(steps=args.steps, lr=args.lr, ckpt=args.ckpt), on_log=logger(run))
     if run:
@@ -60,7 +60,7 @@ def fit(args):
         max_units = max(max_units, state["tokenizer.embed.weight"].shape[0])
     model = Noema(dim=args.dim, enc_depth=args.enc_depth, wm_depth=args.wm_depth,
                   heads=args.heads, max_units=max_units, behavior_dim=behavior_dim, spatial=args.spatial,
-                  neuron_mask_ratio=args.neuron_mask, cross=args.cross, attn_pool=args.attn_pool, contrastive=args.contrastive, ssm=args.ssm, ssm_state=args.ssm_state, hybrid=args.hybrid, film=args.film)
+                  neuron_mask_ratio=args.neuron_mask, cross=args.cross, attn_pool=args.attn_pool, contrastive=args.contrastive, ssm=args.ssm, ssm_state=args.ssm_state, hybrid=args.hybrid, film=args.film, graft=args.graft)
     if state is not None:  # warm-start backbone + shared unit embeddings; fresh heads stay fresh
         model.load_state_dict(state, strict=False)
 
@@ -112,6 +112,7 @@ def main():
     p.add_argument("--ssm-state", type=int, default=128, help="SSM state size")
     p.add_argument("--hybrid", action="store_true", help="interleave attention layers into the SSM encoder")
     p.add_argument("--film", action="store_true", help="nonlinear FiLM held-out readout (vs linear decode)")
+    p.add_argument("--graft", action="store_true", help="GRAFT per-neuron gain interface (read-in gain + per-neuron readout)")
     p.add_argument("--w-contrastive", type=float, default=1.0, help="weight on the contrastive loss")
     p.add_argument("--wandb", action="store_true")
     args = p.parse_args()
