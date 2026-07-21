@@ -54,6 +54,11 @@ class Noema(nn.Module):
         self.multistep = multistep  # >1 adds a multi-step rollout loss (open-loop drift resistance)
         self.contrastive = contrastive  # InfoNCE representation loss (STNDT-style)
         self.contrastive_temp = contrastive_temp
+        # SimCLR/STNDT projection head: the contrastive loss acts on proj(z), NOT z itself,
+        # so shaping the representation to be contrastively discriminative does not distort
+        # the clean z that the linear rate readout decodes (contrasting z directly collapsed
+        # co-bps — the readout and the contrastive objective fought over the same vector).
+        self.contrastive_proj = nn.Sequential(nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim)) if contrastive else None
         self.tokenizer = PopulationTokenizer(dim, max_units)
         if spatial:
             self.encoder = SpatioTemporalEncoder(dim, enc_depth, heads)
@@ -160,7 +165,8 @@ class Noema(nn.Module):
         # Contrastive representation loss: match the masked online latent to its clean
         # teacher latent at the same timestep, repelling the trial's other timesteps.
         if self.contrastive:
-            out["loss_contrastive"] = contrastive_loss(z, target, self.contrastive_temp)
+            out["loss_contrastive"] = contrastive_loss(
+                self.contrastive_proj(z), self.contrastive_proj(target), self.contrastive_temp)
 
         # Anchor the forecast in observation space: the predicted next latent must
         # decode to the next bin's firing. This is what makes rollouts faithful.
