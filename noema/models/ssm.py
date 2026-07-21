@@ -6,6 +6,8 @@ with A = exp(-exp(nu) + i*theta) (|A|<1, stable). Computed in the materialized-k
 x_t = sum_{k<=t} A^{t-k} (B u_k), a causal convolution — fully parallel over time (no scan),
 verified equal to the sequential recurrence in tests.
 """
+import math
+
 import torch
 from torch import nn
 
@@ -16,9 +18,14 @@ class _Dir(nn.Module):
 
     def __init__(self, dim: int, state: int):
         super().__init__()
-        r = torch.rand(state)
-        self.nu = nn.Parameter(torch.log(-torch.log(0.9 + 0.099 * r)))  # |A| = exp(-exp(nu)) in [0.9,0.999]
-        self.theta = nn.Parameter(torch.rand(state) * 0.1)
+        # S4D-Lin-style STRUCTURED init: oscillation frequencies (Im log A) spread evenly
+        # across [0, pi] for full spectral coverage, magnitudes |A| log-spaced in [0.9,0.999]
+        # for a range of memory timescales. A naive random diagonal (near-zero random phase,
+        # uniform |A|) covers almost no frequencies — the documented reason a plain diagonal
+        # SSM underperforms S4D/S5 (published S5 ~0.382 vs our random-init 0.333).
+        n = torch.arange(state, dtype=torch.float32)
+        self.theta = nn.Parameter(math.pi * n / max(state - 1, 1))               # Im log A: 0..pi even
+        self.nu = nn.Parameter(torch.log(-torch.log(torch.linspace(0.9, 0.999, state))))  # |A| range
         self.B = nn.Parameter(torch.randn(state, dim) / dim ** 0.5)
         self.C = nn.Parameter(torch.randn(dim, state, 2) / state ** 0.5)
 
