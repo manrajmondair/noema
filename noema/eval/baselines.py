@@ -13,13 +13,15 @@ from .metrics import r2_score
 def gaussian_smooth(x, sigma):
     if sigma <= 0:
         return x
-    k = int(sigma * 4) | 1  # odd kernel
+    k = int(sigma * 6) | 1  # odd kernel, +/-3 sigma (keeps ~99.7% of the mass)
     t = torch.arange(k, dtype=torch.float32) - k // 2
     w = torch.exp(-(t ** 2) / (2 * sigma ** 2))
-    w = (w / w.sum()).view(1, 1, -1)
+    w = (w / w.sum()).view(1, 1, -1).to(x.dtype)
     trials, steps, units = x.shape
     xp = x.transpose(1, 2).reshape(trials * units, 1, steps)
-    xp = F.conv1d(xp, w, padding=k // 2)
+    # Replicate the trial edges so boundary bins aren't smoothed against zeros;
+    # zero-padding depresses the first/last few bins' rates and costs co-bps.
+    xp = F.conv1d(F.pad(xp, (k // 2, k // 2), mode="replicate"), w)
     return xp.reshape(trials, units, steps).transpose(1, 2)
 
 
