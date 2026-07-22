@@ -33,11 +33,16 @@ def _smooth(x, sigma):
     return out
 
 
-def build_library(train_spikes, cond_ids, sigma=2.0):
-    """Condition-averaged smoothed rate templates: spikes [K,T,N], cond_ids [K] -> [C,T,N]."""
+def build_library(train_spikes, cond_ids, sigma=2.0, shrink=0.0):
+    """Condition-averaged smoothed rate templates: spikes [K,T,N], cond_ids [K] -> [C,T,N].
+    shrink>0 pulls each condition template toward the grand mean (empirical-Bayes partial
+    pooling), trading a little condition contrast for lower per-template estimation noise
+    (~15 trials/condition); tune on the select split."""
     train_spikes = np.asarray(train_spikes, dtype=np.float64)
     conds = np.unique(cond_ids)
     templates = np.stack([train_spikes[cond_ids == c].mean(0) for c in conds])
+    if shrink > 0:
+        templates = (1 - shrink) * templates + shrink * train_spikes.mean(0, keepdims=True)
     return _smooth(templates, sigma).clip(min=1e-4), conds
 
 
@@ -119,14 +124,14 @@ def _load_split(name, cond_keys, path, bin_ms, split):
             ev["train_spikes_heldin"], ev["train_spikes_heldout"])
 
 
-def _predict(train_full, train_cond, test_hi, n_in, sigma, temp, state_match):
-    lib = build_library(train_full, train_cond, sigma)[0]
+def _predict(train_full, train_cond, test_hi, n_in, sigma, temp, state_match, shrink=0.0):
+    lib = build_library(train_full, train_cond, sigma, shrink)[0]
     infer = infer_state_match if state_match else infer_condition_mix
     return infer(test_hi, lib[..., :n_in], lib, temp=temp)[..., n_in:]
 
 
 def mint_cosmooth_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0,
-                        cond_keys=None, split="val", state_match=False):
+                        cond_keys=None, split="val", state_match=False, shrink=0.0):
     """Fit the library on train, predict held-out rates for `split`. Returns
     (heldout_rates [K,T,Nout], heldout_counts [K,T,Nout]) for bits_per_spike.
 
@@ -136,7 +141,7 @@ def mint_cosmooth_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0,
     state-match wins only when trials are time-warped. Re-tune (sigma,temp) per dataset."""
     tr_hi, tr_ho, cond_tr, ev_hi, ev_ho = _load_split(name, cond_keys, path, bin_ms, split)
     full = np.concatenate([tr_hi, tr_ho], -1)
-    return _predict(full, cond_tr, ev_hi, tr_hi.shape[-1], sigma, temp, state_match), ev_ho
+    return _predict(full, cond_tr, ev_hi, tr_hi.shape[-1], sigma, temp, state_match, shrink), ev_ho
 
 
 def mint_member_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0, cond_keys=None,
