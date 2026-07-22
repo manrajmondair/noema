@@ -6,6 +6,8 @@ with A = exp(-exp(nu) + i*theta) (|A|<1, stable). Computed in the materialized-k
 x_t = sum_{k<=t} A^{t-k} (B u_k), a causal convolution — fully parallel over time (no scan),
 verified equal to the sequential recurrence in tests.
 """
+import math
+
 import torch
 from torch import nn
 
@@ -14,15 +16,22 @@ class _Dir(nn.Module):
     """One diagonal-SSM direction: x_t = A x_{t-1} + B u_t, returns Re(C x_t) (no skip).
     Computed as a causal convolution with kernel A^j (materialized, fully parallel)."""
 
-    def __init__(self, dim: int, state: int):
+    def __init__(self, dim: int, state: int, dt_min: float = 0.001, dt_max: float = 0.1, theta_max: float = 0.5):
         super().__init__()
-        # Low-frequency diagonal init (proven, co-bps 0.333): neural activity is smooth, so the
-        # modes stay low-frequency (small Im log A) with a range of memory magnitudes. A spread-
-        # to-pi "S4D-Lin" init was tried and HURT (0.238) — Nyquist modes don't match the data.
-        r = torch.rand(state)
-        self.nu = nn.Parameter(torch.log(-torch.log(0.9 + 0.099 * r)))  # |A| = exp(-exp(nu)) in [0.9,0.999]
-        self.theta = nn.Parameter(torch.rand(state) * 0.1)             # small (low-frequency) phase
-        self.B = nn.Parameter(torch.randn(state, dim) / dim ** 0.5)
+        # S4D/S5-style init on the axes that matter for slow neural dynamics:
+        #  - memory timescales log-uniform over tau = 1/exp(nu) in [1/dt_max, 1/dt_min] = [10, 1000]
+        #    bins (equal modes per decade) so the 140-bin trial span is covered; the prior uniform-|A|
+        #    init under-sampled long memory.
+        #  - phase a low-frequency comb, dense near 0 (quadratic), up to ~16 Hz at 5 ms bins. The
+        #    earlier spread-to-pi attempt aliased to ~100 Hz (Nyquist) and failed (0.238): the band
+        #    was wrong, not the idea.
+        #  - LRU input normalization B *= sqrt(1-|A|^2) so slow and fast modes start balanced.
+        decay = torch.rand(state) * (math.log(dt_max) - math.log(dt_min)) + math.log(dt_min)
+        self.nu = nn.Parameter(decay)                                  # |A| = exp(-exp(nu))
+        n = torch.arange(state, dtype=torch.float32)
+        self.theta = nn.Parameter(theta_max * (n / max(state - 1, 1)) ** 2)
+        gamma = (1.0 - torch.exp(-torch.exp(decay)) ** 2).sqrt()
+        self.B = nn.Parameter(torch.randn(state, dim) / dim ** 0.5 * gamma[:, None])
         self.C = nn.Parameter(torch.randn(dim, state, 2) / state ** 0.5)
 
     def log_A(self):
