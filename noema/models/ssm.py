@@ -16,11 +16,9 @@ class _Dir(nn.Module):
 
     def __init__(self, dim: int, state: int):
         super().__init__()
-        # Low-frequency diagonal init: neural population activity is smooth, so the modes
-        # should be low-frequency (Im log A small) with a range of memory magnitudes. Random
-        # low phase + |A| in [0.9,0.999] is the proven recipe (co-bps 0.333); an evenly-spread-
-        # to-pi "S4D-Lin" init instead wastes half the modes on useless high frequencies and
-        # *hurt* (0.238) — Nyquist modes don't match the data's timescales.
+        # Low-frequency diagonal init (proven, co-bps 0.333): neural activity is smooth, so the
+        # modes stay low-frequency (small Im log A) with a range of memory magnitudes. A spread-
+        # to-pi "S4D-Lin" init was tried and HURT (0.238) — Nyquist modes don't match the data.
         r = torch.rand(state)
         self.nu = nn.Parameter(torch.log(-torch.log(0.9 + 0.099 * r)))  # |A| = exp(-exp(nu)) in [0.9,0.999]
         self.theta = nn.Parameter(torch.rand(state) * 0.1)             # small (low-frequency) phase
