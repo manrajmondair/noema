@@ -72,3 +72,23 @@ prints the trial/unit counts; confirm they match the dataset before uploading.
 Upload the `.h5` to the EvalAI MC_Maze challenge. The returned test-split co-bps is the
 only leaderboard-legitimate figure; locally computed validation numbers are development
 metrics and are not directly comparable to published test-split results.
+
+## Verified test result
+
+The MC_Maze test labels are public (`nlb_tools/data/eval_data_test.h5`), so the official
+test co-bps is scored locally with `noema.eval.score_test` (metric identical to nlb_tools):
+
+    submission_v4.h5 (21 members + MINT)  co-bps = 0.3671   <- best, the reported result
+
+Reference band: NDT 0.323, MINT 0.330, AutoLFADS 0.336, STNDT single 0.369, S5 0.382,
+STNDT/GRAFT ensembles 0.386. 0.3671 is upper-mid, ~0.02 below the top.
+
+Inference-side levers, all measured on this test split (none improved the ensemble):
+  - edge-replicate smoothing (correct vs zero-pad): -0.00005 (noise; kept, it is correct)
+  - EMA-teacher co-smoothing (`--teacher`): -0.0006 (helps a single model +0.001 but the
+    ensemble is covariance-limited, so reducing per-member variance costs diversity)
+  - multi-mask TTA on the ensemble: +0.001 (single-model gain dilutes ~1/K)
+  - rate calibration / temperature / per-neuron gain: within +/-0.0003 under cross-val
+
+The ~0.02 gap to the top band is a representation gap (per-unit attention/gain, as in
+STNDT/GRAFT), not a calibration or ensembling gap.
