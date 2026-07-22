@@ -134,6 +134,18 @@ class Noema(nn.Module):
             return self.cross(tokens, self.tokenizer.readout(target_unit_ids))
         return self._film(z, target_unit_ids) if self.film is not None else self.tokenizer.decode(z, target_unit_ids)
 
+    @torch.no_grad()
+    def cosmooth_dynamical(self, counts, unit_ids, target_unit_ids, alpha=0.5):
+        """Co-smooth held-out rates after blending the encoder's per-bin latent with the world
+        model's one-step dynamical prediction. The encoder denoises with a fixed temporal filter;
+        the world model denoises by projecting onto its learned vector field (trajectory shape),
+        a different inference channel -> its errors can decorrelate from the encoder's. alpha=1
+        recovers the plain estimate; alpha<1 mixes in the dynamics prior."""
+        z = self.encode(counts, unit_ids)
+        zf = torch.cat([z[:, :1], self.world(z)[:, :-1]], dim=1)  # world(z)[:,t] predicts z[:,t+1]
+        zs = alpha * z + (1 - alpha) * zf
+        return self.tokenizer.decode(zs, target_unit_ids)
+
     def forward(self, counts, unit_ids, actions=None, behavior=None,
                 target_counts=None, target_unit_ids=None, session=None, context=None):
         # Coordinated dropout: hide a fraction of spikes and reconstruct only those,
