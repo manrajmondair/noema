@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Data, checkpoints, logs
+/data/
+/datasets/
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+wandb/
+logs/
+*.out
+outputs/
+lightning_logs/
+runs/
+
+# Generated demo weights (parity artifact; noema.html inlines its own copy)
+demo/model.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# FALCON local eval artifacts
+local_gt.pkl
+local_prediction.pkl
+
+# EvalAI submission artifacts (large, regenerable)
+*.h5
+submission*.h5
+eval_data_test.h5

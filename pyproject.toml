@@ -1,0 +1,24 @@
+[project]
+name = "noema"
+version = "0.0.1"
+description = "A world model for neural population activity"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.2", "numpy"]
+
+[project.optional-dependencies]
+data = ["nlb_tools", "dandi", "pynwb", "h5py", "pandas", "scipy"]
+train = ["hydra-core", "wandb", "tqdm"]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["noema*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+ignore = ["E731"]  # local lambda helpers are idiomatic and clear
