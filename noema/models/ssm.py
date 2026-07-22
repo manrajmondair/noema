@@ -14,7 +14,7 @@ class _Dir(nn.Module):
     """One diagonal-SSM direction: x_t = A x_{t-1} + B u_t, returns Re(C x_t) (no skip).
     Computed as a causal convolution with kernel A^j (materialized, fully parallel)."""
 
-    def __init__(self, dim: int, state: int):
+    def __init__(self, dim: int, state: int, learn_dt: bool = False):
         super().__init__()
         # Low-frequency diagonal init (proven, co-bps 0.333): neural activity is smooth, so the
         # modes stay low-frequency (small Im log A) with a range of memory magnitudes. Two
@@ -26,9 +26,16 @@ class _Dir(nn.Module):
         self.theta = nn.Parameter(torch.rand(state) * 0.1)             # small (low-frequency) phase
         self.B = nn.Parameter(torch.randn(state, dim) / dim ** 0.5)
         self.C = nn.Parameter(torch.randn(dim, state, 2) / state ** 0.5)
+        # S5-style learnable per-mode timescale: A = exp(dt * (-exp(nu) + i*theta)). dt init 1
+        # (log_dt=0) so training starts from the proven init and *learns* to rescale timescales
+        # per mode -- the frozen nu can't move timescales with well-conditioned gradients; dt can.
+        self.learn_dt = learn_dt
+        if learn_dt:
+            self.log_dt = nn.Parameter(torch.zeros(state))
 
     def log_A(self):
-        return -torch.exp(self.nu) + 1j * self.theta
+        pole = -torch.exp(self.nu) + 1j * self.theta
+        return torch.exp(self.log_dt) * pole if self.learn_dt else pole
 
     def forward(self, u):
         T = u.size(1)
@@ -58,10 +65,10 @@ class DiagonalSSM(nn.Module):
     backward (future-context) direction are summed, so the encoder sees the whole trial —
     the co-bps encoder is not autoregressive, so full context helps (like the transformer)."""
 
-    def __init__(self, dim: int, state: int = 128, bidirectional: bool = True):
+    def __init__(self, dim: int, state: int = 128, bidirectional: bool = True, learn_dt: bool = False):
         super().__init__()
-        self.fwd = _Dir(dim, state)
-        self.bwd = _Dir(dim, state) if bidirectional else None
+        self.fwd = _Dir(dim, state, learn_dt)
+        self.bwd = _Dir(dim, state, learn_dt) if bidirectional else None
         self.D = nn.Parameter(torch.ones(dim))
 
     def forward(self, u):  # [B,T,dim] -> [B,T,dim]
@@ -79,10 +86,10 @@ class DiagonalSSM(nn.Module):
 
 
 class SSMBlock(nn.Module):
-    def __init__(self, dim: int, state: int, mult: int = 4):
+    def __init__(self, dim: int, state: int, mult: int = 4, learn_dt: bool = False):
         super().__init__()
         self.norm1, self.norm2 = nn.LayerNorm(dim), nn.LayerNorm(dim)
-        self.ssm = DiagonalSSM(dim, state)
+        self.ssm = DiagonalSSM(dim, state, learn_dt=learn_dt)
         self.proj = nn.Linear(dim, dim)
         self.mlp = nn.Sequential(nn.Linear(dim, mult * dim), nn.GELU(), nn.Linear(mult * dim, dim))
 
@@ -96,12 +103,14 @@ class SSMEncoder(nn.Module):
     With hybrid=True, odd layers are bidirectional-attention blocks — combining the
     state-space temporal dynamics with attention over time (each buys a different bias)."""
 
-    def __init__(self, dim: int, depth: int, heads: int, state: int = 128, hybrid: bool = False):
+    def __init__(self, dim: int, depth: int, heads: int, state: int = 128, hybrid: bool = False,
+                 learn_dt: bool = False):
         super().__init__()
         from .encoder import Block
         self.hybrid = hybrid
         self.blocks = nn.ModuleList(
-            (Block(dim, heads) if (hybrid and i % 2 == 1) else SSMBlock(dim, state)) for i in range(depth))
+            (Block(dim, heads) if (hybrid and i % 2 == 1) else SSMBlock(dim, state, learn_dt=learn_dt))
+            for i in range(depth))
         self.norm = nn.LayerNorm(dim)
         self.head_dim = dim // heads
 
