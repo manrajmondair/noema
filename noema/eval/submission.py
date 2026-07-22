@@ -72,7 +72,7 @@ def _forward(models, spikes, in_ids, out_ids, device, fp_steps):
     return torch.cat(hif).numpy(), torch.cat(hof).numpy()
 
 
-def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False, mint=False):
+def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False, mint=False, teacher=False):
     import os
 
     from nlb_tools.make_tensors import make_eval_input_tensors, make_train_input_tensors, save_to_h5
@@ -96,6 +96,11 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False,
 
     device = default_device()
     models = [build_from_state(torch.load(c, map_location="cpu"), n_hi + n_ho, heads)[0].to(device) for c in ckpts]
+    if teacher:  # co-smooth through the EMA teacher encoder (smoothed weights -> steadier rates)
+        for m in models:
+            m.encoder = m.teacher
+            if getattr(m, "teacher_pooler", None) is not None:
+                m.pooler = m.teacher_pooler
     in_ids = torch.arange(n_hi, device=device)
     out_ids = torch.arange(n_ho, device=device) + n_hi
 
@@ -177,9 +182,10 @@ def main():
     p.add_argument("--bin-ms", type=int, default=5)
     p.add_argument("--forward", action="store_true", help="include fp-bps forward rates (needs a multi-step world model)")
     p.add_argument("--mint", action="store_true", help="add the MINT trajectory-library member (decorrelated)")
+    p.add_argument("--teacher", action="store_true", help="co-smooth through the EMA teacher encoder")
     args = p.parse_args()
     make_submission(args.ckpts.split(","), args.path, args.name, args.out, args.bin_ms,
-                    forward=args.forward, mint=args.mint)
+                    forward=args.forward, mint=args.mint, teacher=args.teacher)
 
 
 if __name__ == "__main__":

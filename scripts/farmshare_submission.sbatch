@@ -18,4 +18,4 @@ source "$HOME/miniforge3/etc/profile.d/conda.sh" && conda activate noema
 DATASET="${DATASET:-mc_maze}"
 PREFIXES="${PREFIX:-noema}"
 CKPTS=$(for p in ${PREFIXES//:/ }; do ls checkpoints/${p}*.pt 2>/dev/null; done | sort -u | paste -sd,)
-python -m noema.eval.submission --ckpts "$CKPTS" --name "$DATASET" --path "data/$DATASET" --out "${OUT:-submission.h5}" ${MINT:+--mint} ${FORWARD:+--forward}
+python -m noema.eval.submission --ckpts "$CKPTS" --name "$DATASET" --path "data/$DATASET" --out "${OUT:-submission.h5}" ${MINT:+--mint} ${FORWARD:+--forward} ${TEACHER:+--teacher}
