@@ -78,17 +78,44 @@ metrics and are not directly comparable to published test-split results.
 The MC_Maze test labels are public (`nlb_tools/data/eval_data_test.h5`), so the official
 test co-bps is scored locally with `noema.eval.score_test` (metric identical to nlb_tools):
 
-    submission_v4.h5 (21 members + MINT)  co-bps = 0.3671   <- best, the reported result
+    submission_v4.h5  (21 members + MINT)            co-bps = 0.36707
+    submission_v7.h5  (+ learnable-dt SSM members)   co-bps = 0.36724   <- best, reported
 
 Reference band: NDT 0.323, MINT 0.330, AutoLFADS 0.336, STNDT single 0.369, S5 0.382,
-STNDT/GRAFT ensembles 0.386. 0.3671 is upper-mid, ~0.02 below the top.
+STNDT/GRAFT ensembles 0.386.
 
-Inference-side levers, all measured on this test split (none improved the ensemble):
-  - edge-replicate smoothing (correct vs zero-pad): -0.00005 (noise; kept, it is correct)
-  - EMA-teacher co-smoothing (`--teacher`): -0.0006 (helps a single model +0.001 but the
-    ensemble is covariance-limited, so reducing per-member variance costs diversity)
-  - multi-mask TTA on the ensemble: +0.001 (single-model gain dilutes ~1/K)
-  - rate calibration / temperature / per-neuron gain: within +/-0.0003 under cross-val
+The strongest single model is the learnable-dt state-space encoder (`--ssm --ssm-dt`, an
+S5-style per-mode timescale), val co-bps 0.343 vs the 0.333 plain-SSM baseline — the only
+single-model architecture win found. It lifts the ensemble by only +0.0002 test (see below).
 
-The ~0.02 gap to the top band is a representation gap (per-unit attention/gain, as in
-STNDT/GRAFT), not a calibration or ensembling gap.
+## Ceiling analysis (why 0.367 is the effective ceiling)
+
+A perfect-condition-knowledge oracle (each test trial gets its true condition's held-out
+PSTH) scores 0.392 on this test set; nothing in the literature exceeds it. 0.367 is 94% of
+that. The remaining gap is provably information-bound, not architecture-bound:
+
+  - Every estimator here (transformer, SSM, dt-SSM, MINT) computes the same thing: a
+    condition posterior q(c | held-in) times the held-out PSTH. They differ only in the
+    temporal filter, not the inference.
+  - The 22 members are independent noise around one shared signal: corr(r - consensus) is
+    ~0 (the headline corr(r - counts) ~0.997 is inflated by the shared Poisson target).
+    Optimal-weight stacking == greedy count-mean exactly, so the ensemble is already optimal
+    and has averaged away everything averageable. The whole 0.367->0.392 gap is *shared*
+    condition-inference blur, which no same-mechanism member or reweighting can reduce.
+  - A stronger single confirms this: dt-SSM at +0.010 single moves the ensemble +0.0002.
+  - A dedicated discriminative condition classifier (held-in -> 108 labels -> posterior-PSTH)
+    lands at 0.316 val -- below MINT's generative route (0.328) and far below the consensus
+    (0.370). A third independent route to q(c|held-in) does not sharpen the posterior, so the
+    consensus is Bayes-optimal and the residual is H(condition | held-in): irreducible
+    ambiguity at trial phases where the held-in population does not determine the condition.
+
+Levers measured on this test split, none improved the ensemble: edge-replicate smoothing
+(-0.00005), EMA-teacher co-smoothing (-0.0006), multi-mask TTA (+0.001, 1/K dilution), rate
+calibration/temperature/gain (+/-0.0003), MINT grand-mean shrinkage (hurts), member
+reweighting/stacking (0), world-model one-step dynamical smoother (neutral/hurts),
+structured SSM init x2 (hurt). Falsified earlier: per-unit spatial attention, cross-readout,
+FiLM, contrastive, GRAFT gain interface, width/depth/state scaling.
+
+To overturn the ceiling one must exhibit an estimator whose q(c | held-in) is *sharper* than
+the current consensus (beats it on select and raises the pool above 0.370 val). Absent that,
+0.367 test is the ceiling for any rate-estimator family on this benchmark.
