@@ -31,8 +31,9 @@ def ensemble_rates(models, dataset, device=None, batch_size=64):
 
 
 @torch.no_grad()
-def member_rates(models, dataset, device=None, batch_size=64):
-    """Per-member held-out rates [n_models] of [trials,T,N], with shared targets."""
+def member_rates(models, dataset, device=None, batch_size=64, tta=0):
+    """Per-member held-out rates [n_models] of [trials,T,N], with shared targets.
+    tta>0 averages each member over `tta` coordinated-dropout masks (free variance reduction)."""
     device = device or next(models[0].parameters()).device
     for m in models:
         m.eval()
@@ -42,7 +43,8 @@ def member_rates(models, dataset, device=None, batch_size=64):
         counts, uid = batch["counts"].to(device), batch["unit_ids"].to(device)
         tgt = batch["target_unit_ids"].to(device)
         for i, m in enumerate(models):
-            per[i].append(m.cosmooth(counts, uid, tgt).exp().cpu())
+            r = m.cosmooth_tta(counts, uid, tgt, tta) if tta else m.cosmooth(counts, uid, tgt).exp()
+            per[i].append(r.cpu())
         targets.append(batch["target_counts"])
     return [torch.cat(p) for p in per], torch.cat(targets)
 

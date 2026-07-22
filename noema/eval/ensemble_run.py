@@ -49,6 +49,7 @@ def main():
     p.add_argument("--bin-ms", type=int, default=5)
     p.add_argument("--heads", type=int, default=8)
     p.add_argument("--mint", action="store_true", help="add the MINT trajectory-library member (decorrelated)")
+    p.add_argument("--tta", type=int, default=0, help="test-time augmentation: average k masked passes per member")
     args = p.parse_args()
 
     val = load_nlb(args.path, args.name, args.bin_ms, split="val")
@@ -63,8 +64,8 @@ def main():
         print(f"  {path.split('/')[-1]}: {desc}", flush=True)
 
     # Greedy-select members and tune smoothing on the held-out set; report once on val.
-    sel_r, sel_t = member_rates(models, select, device=device)
-    val_r, val_t = member_rates(models, val, device=device)
+    sel_r, sel_t = member_rates(models, select, device=device, tta=args.tta)
+    val_r, val_t = member_rates(models, val, device=device, tta=args.tta)
 
     # MINT: a decorrelated (non-NN) member. Its rates are built on the same core/select/val
     # trials the transformers use (mint_member_rates replicates split_trials seed 0), so they

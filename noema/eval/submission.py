@@ -20,10 +20,11 @@ _BATCH = 16
 
 
 @torch.no_grad()
-def _cosmooth(models, spikes, in_ids, out_ids, device):
+def _cosmooth(models, spikes, in_ids, out_ids, device, tta=0):
     """Mean held-out rates across models, in trial batches."""
     spikes = torch.as_tensor(spikes, dtype=torch.float32)
-    out = [torch.stack([m.cosmooth(spikes[i:i + _BATCH].to(device), in_ids, out_ids).exp()
+    out = [torch.stack([(m.cosmooth_tta(spikes[i:i + _BATCH].to(device), in_ids, out_ids, tta) if tta
+                                     else m.cosmooth(spikes[i:i + _BATCH].to(device), in_ids, out_ids).exp())
                         for m in models]).mean(0).cpu()
            for i in range(0, spikes.size(0), _BATCH)]
     return torch.cat(out)

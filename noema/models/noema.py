@@ -115,6 +115,20 @@ class Noema(nn.Module):
         z = self.encode(counts, unit_ids)
         return self._film(z, target_unit_ids) if self.film is not None else self.tokenizer.decode(z, target_unit_ids)
 
+    @torch.no_grad()
+    def cosmooth_tta(self, counts, unit_ids, target_unit_ids, k=30):
+        """Test-time augmentation: average the held-out RATE over k coordinated-dropout masks.
+        Marginalizing the input mask reduces single-model estimator variance (the same variance
+        ensembling reduces), buying a free co-bps gain the model was already trained to support.
+        Returns a rate (exp of log-rate), not a log-rate."""
+        if k <= 0:
+            return self.cosmooth(counts, unit_ids, target_unit_ids).exp()
+        r = 0.0
+        for _ in range(k):
+            obs = counts.masked_fill(torch.rand_like(counts) < self.mask_ratio, 0.0)
+            r = r + self.cosmooth(obs, unit_ids, target_unit_ids).exp()
+        return r / k
+
     def _cosmooth_from(self, tokens, z, target_unit_ids):
         if self.cross is not None:
             return self.cross(tokens, self.tokenizer.readout(target_unit_ids))
