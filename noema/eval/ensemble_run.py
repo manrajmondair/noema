@@ -2,7 +2,7 @@
 
 Each checkpoint's architecture (width, depth, spatial-or-temporal) is inferred
 from its weights, so temporal, spatial, and variant models can be ensembled
-together — a diverse ensemble beats a same-architecture one.
+together into a diverse ensemble.
 """
 
 import argparse

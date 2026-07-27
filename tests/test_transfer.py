@@ -45,8 +45,7 @@ def test_adapt_touches_only_new_units():
 def test_session_invariant_transfer():
     # Pretraining over enough sessions with an adversarial session-invariance term
     # yields a latent a held-out population can route into: few-shot calibration then
-    # decodes a session never seen in training. (Verified positive across seeds;
-    # neither more sessions nor the adversary alone is reliable on its own.)
+    # decodes a session never seen in training.
     torch.manual_seed(0)
     pretrain = 6
     system = MultiSessionSystem(sessions=pretrain + 1, units=30, latent=6, seed=2)

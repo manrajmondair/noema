@@ -2,7 +2,7 @@
 
 Average the predicted firing rates (not log-rates) across models, then score
 co-bps once. Poisson co-bps rewards accurate rates, and the mean rate is the
-right pooling — every top NLB entry above ~0.36 is a rate ensemble.
+right pooling for the Poisson likelihood.
 """
 
 import torch
@@ -33,7 +33,7 @@ def ensemble_rates(models, dataset, device=None, batch_size=64):
 @torch.no_grad()
 def member_rates(models, dataset, device=None, batch_size=64, tta=0):
     """Per-member held-out rates [n_models] of [trials,T,N], with shared targets.
-    tta>0 averages each member over `tta` coordinated-dropout masks (free variance reduction)."""
+    tta>0 averages each member over `tta` coordinated-dropout masks (variance reduction, no retraining)."""
     device = device or next(models[0].parameters()).device
     for m in models:
         m.eval()

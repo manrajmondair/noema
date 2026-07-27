@@ -1,8 +1,8 @@
 """Build an EvalAI submission: model rates on the sequestered NLB test trials.
 
 co-bps requires only `eval_rates_heldout`; the held-in and train rates enable the
-optional velocity/PSTH metrics. This writes the submission .h5 — the final upload
-to EvalAI (which holds the test labels) is a manual step with your account.
+optional velocity/PSTH metrics. This writes the submission .h5; the final upload
+to EvalAI, which holds the test labels, is performed separately.
 """
 
 import argparse
@@ -105,8 +105,8 @@ def make_submission(ckpts, path, name, out_h5, bin_ms=5, heads=8, forward=False,
     out_ids = torch.arange(n_ho, device=device) + n_hi
 
     # Greedy-select the ensemble and tune inference smoothing on the held-out val
-    # split (our dev set; the test labels stay sequestered), then predict test/train
-    # with the chosen members (weighted by pick count) — our best ensemble, honestly.
+    # split (the dev set; the test labels stay sequestered), then predict test/train
+    # with the chosen members (weighted by pick count).
     from .baselines import gaussian_smooth
     from .ensemble import greedy_ensemble
     from .metrics import bits_per_spike

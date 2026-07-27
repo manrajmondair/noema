@@ -1,7 +1,7 @@
 """Standard decoding baselines.
 
 A ridge regression from (Gaussian-smoothed) spike counts to velocity is the
-classic BCI reference point; a learned model has to beat it to be worth anything.
+classic BCI reference point a learned model is measured against.
 """
 
 import torch

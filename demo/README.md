@@ -17,3 +17,5 @@ node demo/parity.mjs       # verify the JS forward pass matches PyTorch
 The demo decodes the *intended* movement, so steering the pad moves the cursor
 that way. It is an illustration of the mechanism; the quantitative results live
 in the tests and benchmarks.
+
+Released under the MIT License; see [LICENSE](../LICENSE) at the repository root.

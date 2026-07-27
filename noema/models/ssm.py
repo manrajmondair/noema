@@ -1,5 +1,5 @@
-"""Diagonal complex state-space encoder (S5/LRU-style) — an evidence-backed alternative
-to the temporal transformer for NLB co-bps (state-space models reach the SOTA band).
+"""Diagonal complex state-space encoder (S5/LRU-style) — an alternative to the temporal
+transformer for NLB co-bps.
 
 Each layer is a diagonal linear recurrence x_t = A x_{t-1} + B u_t, y_t = Re(C x_t) + D u_t
 with A = exp(-exp(nu) + i*theta) (|A|<1, stable). Computed in the materialized-kernel form
@@ -16,18 +16,15 @@ class _Dir(nn.Module):
 
     def __init__(self, dim: int, state: int, learn_dt: bool = False):
         super().__init__()
-        # Low-frequency diagonal init (proven, co-bps 0.333): neural activity is smooth, so the
-        # modes stay low-frequency (small Im log A) with a range of memory magnitudes. Two
-        # structured inits were tried and both HURT: spread-to-pi S4D-Lin (0.238, Nyquist modes)
-        # and an S4D/S5-style log-uniform-timescale + LRU-input-norm + 0-16 Hz comb (peaked 0.317
-        # then overfit to 0.07). Init is not the lever here; the random low-freq init wins.
+        # Low-frequency diagonal init: neural activity is smooth, so the modes stay
+        # low-frequency (small Im log A) with a range of memory magnitudes.
         r = torch.rand(state)
         self.nu = nn.Parameter(torch.log(-torch.log(0.9 + 0.099 * r)))  # |A| = exp(-exp(nu)) in [0.9,0.999]
         self.theta = nn.Parameter(torch.rand(state) * 0.1)             # small (low-frequency) phase
         self.B = nn.Parameter(torch.randn(state, dim) / dim ** 0.5)
         self.C = nn.Parameter(torch.randn(dim, state, 2) / state ** 0.5)
         # S5-style learnable per-mode timescale: A = exp(dt * (-exp(nu) + i*theta)). dt init 1
-        # (log_dt=0) so training starts from the proven init and *learns* to rescale timescales
+        # (log_dt=0) so training starts from this init and *learns* to rescale timescales
         # per mode -- the frozen nu can't move timescales with well-conditioned gradients; dt can.
         self.learn_dt = learn_dt
         if learn_dt:

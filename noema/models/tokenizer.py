@@ -21,9 +21,8 @@ class PopulationTokenizer(nn.Module):
         nn.init.zeros_(self.bias.weight)
         # GRAFT neuron interface (opt-in): derive the per-neuron read-in gain and readout
         # direction from the neuron embedding via small MLPs, instead of using the raw
-        # embedding rows. This is the ablation-proven co-bps lever (per-neuron read-in gain
-        # + per-neuron readout over a pooled backbone) — the pieces our uniform read-in and
-        # shared readout lack. Read-in is 1/sqrt(N) normalized (GRAFT Eq. 5).
+        # embedding rows (per-neuron read-in gain + per-neuron readout over a pooled
+        # backbone). Read-in is 1/sqrt(N) normalized (GRAFT Eq. 5).
         self.gin = nn.Sequential(nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim)) if graft else None
         self.gout = nn.Sequential(nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim)) if graft else None
 

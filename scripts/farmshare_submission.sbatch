@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the EvalAI submission .h5 from a diverse ensemble. PREFIX may list several
+# Build the NLB submission .h5 from a diverse ensemble. PREFIX may list several
 # colon-separated checkpoint prefixes, as in farmshare_ensemble.sbatch.
 #   sbatch --export=ALL,PREFIX=noema-honest:noema-cross-s,DATASET=mc_maze,MINT=1 scripts/farmshare_submission.sbatch
 # MINT=1 appends the non-NN trajectory-library member; FORWARD=1 writes forward-prediction keys.

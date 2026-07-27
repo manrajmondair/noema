@@ -56,8 +56,7 @@ class Noema(nn.Module):
         self.contrastive_temp = contrastive_temp
         # SimCLR/STNDT projection head: the contrastive loss acts on proj(z), NOT z itself,
         # so shaping the representation to be contrastively discriminative does not distort
-        # the clean z that the linear rate readout decodes (contrasting z directly collapsed
-        # co-bps — the readout and the contrastive objective fought over the same vector).
+        # the clean z that the linear rate readout decodes.
         self.contrastive_proj = nn.Sequential(nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim)) if contrastive else None
         self.tokenizer = PopulationTokenizer(dim, max_units, graft)
         if spatial:
@@ -119,7 +118,7 @@ class Noema(nn.Module):
     def cosmooth_tta(self, counts, unit_ids, target_unit_ids, k=30):
         """Test-time augmentation: average the held-out RATE over k coordinated-dropout masks.
         Marginalizing the input mask reduces single-model estimator variance (the same variance
-        ensembling reduces), buying a free co-bps gain the model was already trained to support.
+        ensembling reduces).
         Returns a rate (exp of log-rate), not a log-rate."""
         if k <= 0:
             return self.cosmooth(counts, unit_ids, target_unit_ids).exp()

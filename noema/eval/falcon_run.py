@@ -4,7 +4,7 @@ the local minival split — a real R² with public labels, no submission require
     python -m noema.eval.falcon_run --data data/000954 --task h1
 
 Held-out (cross-session few-shot) scoring uses sequestered labels and needs an
-EvalAI submission; this reports the honest local held-in number.
+EvalAI submission; this reports the local held-in number.
 """
 
 import argparse

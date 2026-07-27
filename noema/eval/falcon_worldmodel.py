@@ -1,4 +1,4 @@
-"""World-model rollout fidelity on real FALCON data — Noema's central claim.
+"""World-model rollout fidelity on real FALCON data.
 
 Noema is a *world model*: it predicts future neural population state, not just the
 current behavior. This trains the model on FALCON H1 and then, from a seed window,

@@ -1,4 +1,4 @@
-"""Cross-session transfer study on FALCON H1 — the benchmark's 'real wall'.
+"""Cross-session transfer study on FALCON H1.
 
 Train the streaming velocity decoder on a subset of the held-in sessions and score
 it, zero-shot, on the remaining (unseen) sessions. Same subject, different recording
