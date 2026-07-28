@@ -19,3 +19,12 @@ def test_ridge_velocity_baseline_decodes():
     train = SpikeWindows(c[:200], behavior=b[:200])
     val = SpikeWindows(c[200:], behavior=b[200:])
     assert ridge_velocity(train, val) > 0.2  # a real reference point to beat
+
+
+def test_wiener_lags_leave_the_single_bin_path_untouched():
+    system = LinearSpikeSystem(units=40, latent=6, action_dim=2, seed=1)
+    c, _, _, b = system.sample(batch=256, steps=30)
+    train, val = SpikeWindows(c[:200], behavior=b[:200]), SpikeWindows(c[200:], behavior=b[200:])
+    # the default must stay bit-identical, so published single-bin numbers still hold
+    assert ridge_velocity(train, val, lags=(0,)) == ridge_velocity(train, val)
+    assert ridge_velocity(train, val, lags=(0, 1, 2, 4)) > 0.2

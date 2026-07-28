@@ -25,10 +25,20 @@ def gaussian_smooth(x, sigma):
     return xp.reshape(trials, units, steps).transpose(1, 2)
 
 
-def ridge_velocity(train_ds, val_ds, alpha=1.0, sigma=2.0):
-    """Fit ridge on the train split, return velocity R² on the val split."""
+def ridge_velocity(train_ds, val_ds, alpha=1.0, sigma=2.0, lags=(0,)):
+    """Fit ridge on the train split, return velocity R² on the val split.
+
+    `lags` are bin offsets into the past. Widening them turns the single-bin
+    ridge into a Wiener filter — the standard clinical BCI decoder, and the only
+    like-for-like reference for a model that reads a window of spike history.
+    """
     def design(ds):
-        x = gaussian_smooth(ds.heldin, sigma).reshape(-1, ds.heldin.size(-1))
+        x = gaussian_smooth(ds.heldin, sigma)
+        # Lag within a trial and repeat the leading bin at the edge, so a lagged
+        # feature never reaches back into the previous trial.
+        step = torch.arange(x.size(1))
+        x = torch.cat([x[:, (step - lag).clamp(min=0)] for lag in lags], dim=-1)
+        x = x.reshape(-1, x.size(-1))
         x = torch.cat([x, torch.ones(x.size(0), 1)], dim=1)  # bias column
         return x, ds.behavior.reshape(-1, ds.behavior.size(-1))
 
