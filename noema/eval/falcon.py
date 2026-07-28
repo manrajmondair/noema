@@ -11,6 +11,22 @@ from ..data.dataset import SpikeWindows
 from .streaming import StreamingDecoder
 
 
+def load_sessions(pattern, task="h1"):
+    """(name, neural, kinematics, eval_mask) for every NWB matching `pattern`."""
+    import glob
+
+    from falcon_challenge.config import FalconTask
+    from falcon_challenge.dataloaders import load_nwb
+
+    out = []
+    for f in sorted(glob.glob(pattern)):
+        neural, kin, _, mask = load_nwb(f, FalconTask[task])
+        out.append((f.split("/")[-1][-28:-4], neural.astype("float32"), kin.astype("float32"), mask))
+    if not out:
+        raise FileNotFoundError(f"no sessions matched {pattern}")
+    return out
+
+
 def load_falcon(path, task="h1", window=50):
     from falcon_challenge.config import FalconTask
     from falcon_challenge.dataloaders import load_nwb

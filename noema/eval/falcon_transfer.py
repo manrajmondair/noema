@@ -10,7 +10,6 @@ evaluation mask, matching the FALCON scorer.
 """
 
 import argparse
-import glob
 
 import numpy as np
 import torch
@@ -20,20 +19,8 @@ from .. import Noema
 from ..data.dataset import SpikeWindows
 from ..train import TrainConfig, train
 from ..utils import default_device
+from .falcon import load_sessions
 from .streaming import StreamingDecoder
-
-
-def _load(pattern, task):
-    from falcon_challenge.config import FalconTask
-    from falcon_challenge.dataloaders import load_nwb
-
-    out = []
-    for f in sorted(glob.glob(pattern)):
-        neural, kin, _, mask = load_nwb(f, FalconTask[task])
-        out.append((f.split("/")[-1][-28:-4], neural.astype("float32"), kin.astype("float32"), mask))
-    if not out:
-        raise FileNotFoundError(f"no sessions matched {pattern}")
-    return out
 
 
 @torch.no_grad()
@@ -118,7 +105,7 @@ def main():
     cfg = FalconConfig(task=FalconTask[args.task])
     device = default_device()
 
-    sessions = _load(f"{args.data}/*held-in-calib/*.nwb", args.task)
+    sessions = load_sessions(f"{args.data}/*held-in-calib/*.nwb", args.task)
     if args.held_out >= len(sessions):
         raise ValueError(f"only {len(sessions)} sessions; cannot hold out {args.held_out}")
     train_sessions, held_out = sessions[: -args.held_out], sessions[-args.held_out:]

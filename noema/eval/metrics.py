@@ -28,3 +28,17 @@ def r2_score(pred, target):
     res = ((target - pred) ** 2).sum(0)
     tot = ((target - target.mean(0)) ** 2).sum(0).clamp_min(1e-8)
     return (1 - res / tot).mean().item()
+
+
+def r2_weighted(pred, target):
+    """Variance-weighted R² — the FALCON convention.
+
+    H1's seven kinematic dimensions differ in variance by an order of magnitude, so a
+    uniform average is dragged down by the near-constant ones. Weighting by each
+    dimension's share of total variance is what the challenge scorer rewards.
+    """
+    pred = pred.reshape(-1, pred.shape[-1])
+    target = target.reshape(-1, target.shape[-1])
+    res = ((target - pred) ** 2).sum(0)
+    tot = ((target - target.mean(0)) ** 2).sum(0)
+    return (1 - res.sum() / tot.sum().clamp_min(1e-8)).item()

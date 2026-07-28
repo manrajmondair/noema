@@ -25,7 +25,7 @@ def gaussian_smooth(x, sigma):
     return xp.reshape(trials, units, steps).transpose(1, 2)
 
 
-def ridge_velocity(train_ds, val_ds, alpha=1.0, sigma=2.0, lags=(0,)):
+def ridge_velocity(train_ds, val_ds, alpha=1.0, sigma=2.0, lags=(0,), score=None):
     """Fit ridge on the train split, return velocity R² on the val split.
 
     `lags` are bin offsets into the past. Widening them turns the single-bin
@@ -46,4 +46,4 @@ def ridge_velocity(train_ds, val_ds, alpha=1.0, sigma=2.0, lags=(0,)):
     xva, yva = design(val_ds)
     gram = xtr.t() @ xtr + alpha * torch.eye(xtr.size(1))
     weights = torch.linalg.solve(gram, xtr.t() @ ytr)
-    return r2_score(xva @ weights, yva)
+    return (score or r2_score)(xva @ weights, yva)

@@ -8,7 +8,6 @@ EvalAI submission; this reports the local held-in number.
 """
 
 import argparse
-import glob
 
 import numpy as np
 import torch
@@ -18,20 +17,8 @@ from .. import Noema
 from ..data.dataset import SpikeWindows
 from ..train import TrainConfig, train
 from ..utils import default_device
+from .falcon import load_sessions
 from .streaming import StreamingDecoder
-
-
-def _load_sessions(pattern, task):
-    from falcon_challenge.config import FalconTask
-    from falcon_challenge.dataloaders import load_nwb
-
-    sessions = []
-    for f in sorted(glob.glob(pattern)):
-        neural, kin, _, _ = load_nwb(f, FalconTask[task])
-        sessions.append((neural.astype("float32"), kin.astype("float32")))
-    if not sessions:
-        raise FileNotFoundError(f"no sessions matched {pattern}")
-    return sessions
 
 
 def main():
@@ -58,10 +45,10 @@ def main():
     # Held-in calibration sessions, windowed. Velocity is tiny-scale (std ~1e-3), so
     # standardize per dim for a stable MSE, and undo it in the decoder to match the
     # evaluator's raw-velocity R².
-    sessions = _load_sessions(f"{args.data}/*held-in-calib/*.nwb", args.task)
-    all_kin = np.concatenate([k for _, k in sessions], 0)
+    sessions = load_sessions(f"{args.data}/*held-in-calib/*.nwb", args.task)
+    all_kin = np.concatenate([k for *_, k, _ in sessions], 0)
     vmean, vstd = all_kin.mean(0), all_kin.std(0) + 1e-8
-    parts = [SpikeWindows(n, behavior=(k - vmean) / vstd, window=args.window) for n, k in sessions]
+    parts = [SpikeWindows(n, behavior=(k - vmean) / vstd, window=args.window) for _, n, k, _ in sessions]
     ds = ConcatDataset(parts)
     loader = DataLoader(ds, batch_size=args.batch, shuffle=True, collate_fn=parts[0].collate, drop_last=True)
 
