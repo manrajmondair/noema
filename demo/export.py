@@ -104,15 +104,17 @@ h1{font:400 40px/1.1 var(--display);letter-spacing:-.012em;color:var(--ink-1);ma
 .tapelab b{font-weight:400;color:var(--ink-1)}
 
 .field{position:relative;border-left:1px solid var(--rule-hi);border-bottom:1px solid var(--rule-hi)}
-.reg{display:block;width:100%;height:150px;background:var(--paper)}
-.reg.tall{height:190px}
+/* Heights are whole multiples of the 176 channels, so no channel is dropped, and the
+   payload panels are taller than the context strip above them. */
+.reg{display:block;width:100%;height:352px;background:var(--paper)}
+.reg.strip{height:176px}
 /* The forecast is ten bins against hundreds of history, so it gets its own panel at
    full width. Drawing the context larger than the result inverts the argument. */
 .horizon{display:grid;grid-template-columns:repeat(3,1fr);gap:0 18px;margin:18px 0 0}
 .horizon > div{border-left:1px solid var(--rule-hi);border-bottom:1px solid var(--rule-hi)}
 .hlab{display:block;font-size:13px;letter-spacing:.09em;
       color:var(--ink-3);padding:0 0 6px 8px}
-.rowlab{position:absolute;top:6px;right:7px;color:var(--ink-3);font-size:13px;
+.rowlab{position:absolute;top:4px;right:7px;color:var(--ink-3);font-size:13px;
         letter-spacing:.09em;pointer-events:none;background:var(--paper);padding:0 3px}
 #cut{position:absolute;top:0;bottom:0;width:1px;background:var(--intent);cursor:ew-resize;touch-action:none}
 #cut::after{content:"";position:absolute;top:-7px;left:-6px;width:13px;height:13px;background:var(--intent)}
@@ -179,20 +181,20 @@ footer a{color:var(--ink-3)}
 
     <div class="field" id="field">
       <span class="rowlab">recording so far</span>
-      <canvas class="reg tall" id="r-hist" role="img" aria-label="The recording up to the mark"></canvas>
+      <canvas class="reg strip" id="r-hist" role="img" aria-label="The recording up to the mark"></canvas>
       <div id="cut" role="slider" tabindex="0" aria-label="Position in the recording"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="70"></div>
     </div>
     <div class="horizon">
-      <div><span class="hlab">forecast</span>
+      <div><span class="hlab">forecast · expected counts</span>
         <canvas class="reg" id="r-pred" role="img" aria-label="Forecast firing rates for 176 channels"></canvas></div>
-      <div><span class="hlab">what the cortex did</span>
+      <div><span class="hlab">what the cortex did · counts</span>
         <canvas class="reg" id="r-true" role="img" aria-label="The firing that was actually recorded"></canvas></div>
-      <div><span class="hlab">difference</span>
+      <div><span class="hlab">absolute difference</span>
         <canvas class="reg" id="r-err" role="img" aria-label="Absolute difference between forecast and recording"></canvas></div>
     </div>
-    <div class="axis"><span id="a-left">0 s</span><span>176 channels · 20 ms bins</span><span id="a-right"></span></div>
-    <div class="legend"><span>low</span><i></i><span>high</span><span>rate, log scale</span></div>
+    <div class="axis"><span id="a-left">0 s</span><span>176 channels · 20 ms bins · the difference includes spiking randomness no forecast can remove</span><span id="a-right"></span></div>
+    <div class="legend"><span>0</span><i></i><span>3 or more</span><span>spikes per 20 ms bin, log scale, one scale for all four panels</span></div>
     <p class="hint">Drag the mark, or focus it and use the arrow keys.</p>
 
     <section>
@@ -262,15 +264,15 @@ function buildLUT(){
 // fitted to a dark background crushes the quiet baseline into the page. The scale is set
 // by the data actually present — counts reach 6 and predicted rates sit near 0.26 — so a
 // curve built for rates up to 24 would render the entire field as blank paper.
-const RMAX = Math.log1p(6);
+const RMAX = Math.log1p(3);
 const norm = r => Math.max(0,Math.min(255,Math.round(Math.log1p(Math.max(0,r))/RMAX*255)));
 
 let tapes=[], models={}, active='multistep', day=0, cut=0;
 
 function paint(canvas, grid, cols){
   const dpr=devicePixelRatio||1;
-  canvas.width=Math.round(canvas.clientWidth*dpr);
-  canvas.height=Math.round(canvas.clientHeight*dpr);
+  const k=Math.max(1,Math.round(canvas.clientHeight*dpr/CH));   // device rows per channel
+  canvas.width=Math.round(canvas.clientWidth*dpr); canvas.height=CH*k;
   const ctx=canvas.getContext('2d'), img=ctx.createImageData(canvas.width,canvas.height);
   const cw=canvas.width/cols, rh=canvas.height/CH, paper=LUT[0];
   for (let y=0;y<canvas.height;y++){
@@ -307,18 +309,47 @@ function render(revealed){
 
 // Commit the forecast, hold it alone, then let the recording arrive. The pause is the
 // point: the model is on the record before the answer is visible.
+// Centred population correlation between what was forecast and what was recorded, over
+// the bins on screen. Centring removes the static per-channel firing profile, which is what
+// makes the raw number roughly four times larger and far less meaningful.
+const profiles={};
+function profile(){
+  // The static firing rate of each channel over the whole recording. Subtracting a bin's
+  // own mean instead would remove nothing that matters and leave the raw metric wearing
+  // the centred metric's name — which is the confusion this page exists to undo.
+  if (!profiles[day]){
+    const tape=tapes[day], p=new Array(CH).fill(0);
+    for (const bin of tape) for (let c=0;c<CH;c++) p[c]+=bin[c];
+    profiles[day]=p.map(v=>v/tape.length);
+  }
+  return profiles[day];
+}
+function score(){
+  if (!current) return NaN;
+  const truth=tapes[day].slice(cut,cut+H), prof=profile();
+  let tot=0, n=0;
+  for (let h=0;h<H;h++){
+    const c=correlate(current.pred[h].map((v,i)=>v-prof[i]), truth[h].map((v,i)=>v-prof[i]));
+    if (!Number.isNaN(c)){ tot+=c; n++; }
+  }
+  return n ? tot/n : NaN;
+}
+
+const scored=()=>{ const v=score(); return Number.isNaN(v) ? 'checked'
+  : 'checked · centred correlation '+v.toFixed(2); };
+
 let timer=null;
 function commit(){
   clearTimeout(timer);
   const state=document.getElementById('d-state');
   render(0); state.textContent='forecast committed';
   if (matchMedia('(prefers-reduced-motion: reduce)').matches){
-    render(H); state.textContent='recording checked'; plot(); return;
+    render(H); state.textContent=scored(); plot(); return;
   }
   let shown=0;
   timer=setTimeout(function step(){
     shown++; render(shown);
-    state.textContent = shown>=H ? 'recording checked' : 'recording arriving';
+    state.textContent = shown>=H ? scored() : 'recording arriving';
     if (shown<H) timer=setTimeout(step,90); else plot();
   },400);
 }
@@ -416,7 +447,7 @@ async function boot(){
   });
 
   day=0; cut=Math.floor(tapes[0].length*0.7);
-  select(); ledger(); commit();
+
 
   const cutEl=document.getElementById('cut'), field=document.getElementById('field');
   let drag=false, base=0, span=HIST+H;
@@ -448,15 +479,22 @@ async function boot(){
   // The ramp and the plot read their colours from the stylesheet, so a mode change
   // has to rebuild the lookup table and repaint; CSS alone cannot restyle a canvas.
   const modeBtn=document.getElementById('mode');
+  let painted=false;
   const apply=dark=>{
     document.documentElement.dataset.mode = dark ? 'dark' : 'light';
     modeBtn.textContent = dark ? 'Light' : 'Dark';
     modeBtn.setAttribute('aria-pressed', dark);
-    buildLUT(); render(H); plot();
+    buildLUT();
+    // Only repaint a mode change over an already-finished reveal. Painting here on first
+    // load would show the recording before the forecast has been held alone, which is the
+    // one thing the sequence exists to do.
+    if (painted){ render(H); plot(); }
   };
   const prefers=matchMedia('(prefers-color-scheme: dark)');
   apply(prefers.matches);
+  painted=true;
   prefers.addEventListener('change', e=>apply(e.matches));
+  select(); ledger(); commit();
   modeBtn.onclick=()=>apply(document.documentElement.dataset.mode!=='dark');
 }
 

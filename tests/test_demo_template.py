@@ -88,3 +88,17 @@ def test_the_centred_metric_is_the_one_explained(page):
     # page's central honesty decision, so it must be stated, not just plotted.
     assert "centred" in page
     assert "average firing profile" in page or "fires on average" in page
+
+
+def test_canvas_heights_are_multiples_of_the_channel_count(page):
+    # A 150px canvas over 176 channels silently drops 26 of them while the deck and the
+    # aria-labels claim 176. Heights must divide evenly so every channel gets a row.
+    heights = [int(m) for m in re.findall(r"\.reg[^{]*\{[^}]*height:(\d+)px", page)]
+    assert heights, "no register heights found"
+    assert all(h % 176 == 0 for h in heights), f"heights not divisible by 176: {heights}"
+
+
+def test_the_reveal_is_not_painted_before_it_is_held(page):
+    # The forecast is held alone before the recording arrives; that pause is the argument.
+    # Painting the revealed state during boot showed the answer and then retracted it.
+    assert "if (painted){ render(H); plot(); }" in page
