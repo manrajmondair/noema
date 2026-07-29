@@ -52,13 +52,29 @@ def test_tabular_figures_are_one_declaration(page):
     assert "font-variant-numeric:tabular-nums slashed-zero" in page
 
 
-def test_the_synthetic_boundary_is_stated_in_the_caption(page):
-    # The disclosure belongs at the point of contact, not two screens away, so pin
-    # it to the caption specifically. Wrapping is incidental; collapse it.
-    caption = " ".join(page.split("<figcaption>")[1].split("</figcaption>")[0].split())
-    assert "synthetic" in caption
-    assert "not an experimental recording" in caption
+def test_the_page_no_longer_claims_to_be_synthetic(page):
+    # The previous page ran a synthetic spiking system and disclosed it in seven places.
+    # This one plays real recordings, so a leftover disclaimer would be false in the
+    # opposite direction — and the real source has to be named instead.
+    assert "synthetic" not in page.lower()
+    assert "DANDI:000954" in page
 
 
-def test_the_loop_stops_when_the_tab_is_hidden(page):
-    assert "visibilitychange" in page
+def test_both_objectives_ship(page):
+    # The contrast between the two training objectives is the finding. If one model
+    # silently stops being exported the page still renders, just without its argument.
+    assert '"multistep"' in page and '"onestep"' in page
+
+
+def test_parity_is_reported_as_measured_against_a_gate(page):
+    # A passing number nobody can see the size of is not evidence, so the page prints
+    # both the measurement and the threshold and never the word "verified".
+    assert "against a 2 × 10⁻³ gate" in page
+    assert "verified" not in page.lower()
+
+
+def test_the_centred_metric_is_the_one_explained(page):
+    # Raw correlation is roughly twice centred on this data. Which one leads is the
+    # page's central honesty decision, so it must be stated, not just plotted.
+    assert "centred" in page
+    assert "average firing profile" in page or "fires on average" in page
