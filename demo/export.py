@@ -140,6 +140,7 @@ TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#FAF7F0"/>
+<meta name="description" content="An action-conditioned neural world model, rolled forward in the browser."/>
 <title>Noema — steering a neural world model</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%2317161A'/%3E%3C/svg%3E"/>
 <style>
@@ -187,6 +188,7 @@ figure{margin:36px 0 0}
 .part-label{display:block;font:400 12px/1.4 var(--mono);letter-spacing:.09em;
             text-transform:uppercase;color:var(--ink-3);margin:0 0 10px}
 .part-label i{font-style:normal;color:var(--ink-1)}
+.part-label-c{margin-top:34px}
 /* (a) intent */
 #pad{width:212px;height:212px;background:var(--leaf);border:1px solid var(--rule-hi);
      position:relative;touch-action:none;cursor:crosshair}
@@ -274,7 +276,7 @@ figcaption b{font-weight:400;color:var(--ink-1)}
         <div class="axis"><span>0 → 1.8 s · 90 bins × 20 ms</span><span>unit 1…32</span></div>
         <div class="legend"><span>low</span><i></i><span>high</span><span>predicted rate</span></div>
 
-        <span class="part-label" style="margin-top:34px"><i>(c)</i> Decoded movement</span>
+        <span class="part-label part-label-c"><i>(c)</i> Decoded movement</span>
         <canvas id="path" role="img"
                 aria-label="Path reconstructed from the predicted population firing."></canvas>
         <p class="gauge">alignment, intent against decoded <b id="align">—</b></p>
