@@ -1,0 +1,209 @@
+{
+  "benchmarks": [
+    {
+      "boundary": "Co-smoothing benchmark; not cross-region forecasting",
+      "name": "NLB MC_Maze",
+      "scope": "Official public test scorer",
+      "value": "0.367 co-bps"
+    },
+    {
+      "boundary": "Behavior decoding; not held-out transfer",
+      "name": "FALCON H1",
+      "scope": "Official held-in evaluator",
+      "value": "0.87 R\u00b2"
+    }
+  ],
+  "schema_version": 2,
+  "studies": [
+    {
+      "boundary": "Initial four-animal analysis. The primary comparison against the condition-time control was inconclusive; representation reuse is secondary.",
+      "comparisons": [
+        {
+          "interval": [
+            0.03602368384599686,
+            0.11791111528873444
+          ],
+          "label": "Regional world model \u2212 direct horizon",
+          "value": 0.06873723122283133
+        },
+        {
+          "interval": [
+            -0.1359708607196808,
+            0.16273340582847595
+          ],
+          "label": "Regional world model \u2212 condition-time PSTH",
+          "value": 0.010274737474109246
+        }
+      ],
+      "decision": "Shared-transition hypothesis not supported",
+      "domain": [
+        -0.15,
+        0.18
+      ],
+      "horizons_ms": [
+        20,
+        40,
+        100,
+        200
+      ],
+      "id": "ibl-original",
+      "notes": [
+        {
+          "boundary": "Likelihood gain only; target labels required",
+          "interval": [
+            0.044323354959487915,
+            0.1914178878068924
+          ],
+          "label": "Frozen features \u2212 scratch readout \u00b7 32 trials",
+          "value": 0.113601391170463
+        },
+        {
+          "boundary": "r -0.003; R\u00b2 -0.171; no dynamic claim",
+          "interval": [
+            0.02267402410507202,
+            0.10653479397296906
+          ],
+          "label": "Linear CA1-history model vs training mean",
+          "value": 0.07354537357970208
+        }
+      ],
+      "provenance": {
+        "git_revision": "5f3ef0fc962537092c8573f8eb7b33113703c4e5",
+        "input_sha256": {
+          "ibl-CA1-0.json": "67cc0961132e679c4f421bd90da1dd13669536055de92b4b993e6193ad35a7a5",
+          "ibl-CA1-1.json": "5225a0c91cb47fee74d58ef42dd8fb3779e92325c7a304f3cad227022bfd88d3",
+          "ibl-CA1-2.json": "b2783274b9b04833b743b63b38545ac775b1b006307c24f4fee2f9a215dfdd36"
+        },
+        "split_digest": "4b5f74c0c0cc2a9c43114839ec0674f067932b8847c62a71f9202b6d2a6d8930"
+      },
+      "route": {
+        "source": "CA1",
+        "targets": [
+          "DG",
+          "LP",
+          "PO",
+          "VISa"
+        ]
+      },
+      "scope": "4 held-out animals \u00b7 7 total QC-passing CA1 units \u00b7 seeds 0/1/2",
+      "status": "not_supported",
+      "title": "IBL original study"
+    },
+    {
+      "boundary": "Animal- and session-disjoint from the original study; evaluated within the 2024 Q2 IBL Repeated Site release. This does not establish equivalence or rule out cross-region information.",
+      "comparisons": [
+        {
+          "interval": [
+            -0.010607800209269238,
+            0.008725669463121612
+          ],
+          "label": "Regional world model \u2212 direct horizon",
+          "value": -0.000767940879834221
+        },
+        {
+          "interval": [
+            -0.043656269022854764,
+            0.021155118211848473
+          ],
+          "label": "Regional world model \u2212 training-only condition PSTH",
+          "value": -0.012341896619060082
+        }
+      ],
+      "decision": "Prespecified replication criterion not met",
+      "domain": [
+        -0.05,
+        0.03
+      ],
+      "horizons_ms": [
+        20,
+        40,
+        100,
+        200
+      ],
+      "id": "ibl-replication",
+      "notes": [],
+      "provenance": {
+        "baseline_sha256": "1dea3acd26c7cb29baea9fdbf0a954f3a107f8e75c0e96ebc226804ca5a764d4",
+        "git_revision": "9061b61b02b7503b0de9b63362fbe3e83ea76cb5",
+        "manifest_sha256": "2ce26acf46a87e98131b686f25df47f8581f147b8cbacdeab09e20bcf785ad3c",
+        "result_sha256": "dfa36ee30787c7419567f61a0feb682201272ade3c469c7a449c096785451cc2",
+        "study_sha256": "5f9478d81724e2dde27c7dd6789d5ba60b29cf5309b880416795bf91612fe081"
+      },
+      "route": {
+        "source": "CA1",
+        "targets": [
+          "DG",
+          "LP",
+          "PO",
+          "VISa"
+        ]
+      },
+      "scope": "10 coverage-complete animals \u00b7 one session each \u00b7 frozen seeds 0/1/2",
+      "status": "not_supported",
+      "title": "IBL frozen replication"
+    },
+    {
+      "boundary": "Selection-stage estimates only. The four-comparison gate failed, so the held-out test was not materialized and no Allen generalization claim is made.",
+      "comparisons": [
+        {
+          "interval": [
+            -0.015298207307372772,
+            0.06256300458119698
+          ],
+          "label": "VISp history \u2212 stimulus/behavior context",
+          "value": 0.02029873245026636
+        },
+        {
+          "interval": [
+            0.0051104315351273594,
+            0.013716661311076997
+          ],
+          "label": "VISp history \u2212 condition-preserving shuffle",
+          "value": 0.009100461981959565
+        },
+        {
+          "interval": [
+            0.010660601586370583,
+            0.13733027453153243
+          ],
+          "label": "VISp history \u2212 zero-source control",
+          "value": 0.07396231356340252
+        },
+        {
+          "interval": [
+            -0.004185695811422974,
+            0.019030021870541623
+          ],
+          "label": "VISp history \u2212 static source model",
+          "value": 0.006782228535930217
+        }
+      ],
+      "decision": "Stopped at selection; confirmatory test sealed",
+      "domain": [
+        -0.05,
+        0.15
+      ],
+      "horizons_ms": [
+        20
+      ],
+      "id": "allen-selection",
+      "notes": [],
+      "provenance": {
+        "git_revision": "6e41e5114b8f0caf8a2e2fc023646e307f2ec9e3",
+        "manifest_sha256": "370cab1aa556b4c54f2b719fde4b3f356fb8655895c7eb6e3ed9f3443a6114b2",
+        "protocol_sha256": "04657b53470d7eb540ece7592bf4fd16918f07acb0c3d1b98a692918aa28d261",
+        "selection_sha256": "452c73868c09e01130f403606b516e96a8e9448c4aa5e4136244ecaeef32adea",
+        "study_sha256": "331b57bc9431a125fa40cbc2cca929dcf46357e3aba0f26a2efa99e1b359c509"
+      },
+      "route": {
+        "source": "VISp",
+        "targets": [
+          "VISl"
+        ]
+      },
+      "scope": "8 selection animals \u00b7 primary horizon 20 ms \u00b7 seeds 0/1/2",
+      "status": "stopped_at_selection",
+      "title": "Allen cross-region study"
+    }
+  ]
+}

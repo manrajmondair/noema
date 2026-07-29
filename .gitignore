@@ -34,6 +34,11 @@ runs/
 # Generated demo weights (parity artifact; noema.html inlines its own copy)
 demo/model.json
 
+# Deploy state and local secrets (any level)
+.vercel/
+.env.local
+.env*.local
+
 # OS / editor
 .DS_Store
 .idea/
