@@ -92,6 +92,76 @@ def parity_fixtures(models, tape, window, horizon, cuts=8):
     return out
 
 
+def build_all(window=50, horizon=10, cuts=100, out="demo/assets.json"):
+    """Every asset the page ships, written as one JSON bundle.
+
+    Both models are rounded to float16 before anything is measured or referenced, so the
+    curves on the page and the parity fixtures both describe the weights that actually run.
+    """
+    import json
+    import pathlib
+
+    from falcon_challenge.config import FalconConfig, FalconTask
+
+    from demo.measure import forecast_skill
+    from demo.tapes import assert_disjoint, extract, training_paths
+    from noema import Noema
+    from noema.eval.falcon import load_sessions
+
+    cfg = FalconConfig(task=FalconTask["h1"])
+    tapes = extract()
+    # Check against what the models were ACTUALLY trained on, recorded at training time,
+    # not against what we believe the training set to be. The first version of this guard
+    # compared tapes to a declared file list while the trainer was loading every session
+    # in the directory, so six of the thirteen tapes were recordings the model had read
+    # and the check still passed. A guard fed its own assumption proves nothing.
+    trained = pathlib.Path("checkpoints/demo-train-files.txt")
+    if not trained.exists():
+        raise RuntimeError("checkpoints/demo-train-files.txt is missing: retrain with "
+                           "--train-files so the shipped tapes can be checked against the "
+                           "files the model actually read")
+    used = [p for p in trained.read_text().split() if p]
+    assert set(used) == set(training_paths()), "the models were trained on a different file set"
+    training = [n for path in used for _, n, _, _ in load_sessions(path)]
+    assert_disjoint([a for *_, a in tapes], training)  # never ship a recording the model read
+
+    models = {}
+    for tag, path in (("multistep", "checkpoints/demo-multistep.pt"),
+                      ("onestep", "checkpoints/demo-onestep.pt")):
+        m = Noema(dim=96, enc_depth=3, wm_depth=2, heads=8,
+                  max_units=cfg.n_channels, behavior_dim=cfg.out_dim)
+        m.load_state_dict(torch.load(path, map_location="cpu"))
+        models[tag] = round_to_f16(m)
+
+    weights, calendar = {}, []
+    for tag, model in models.items():
+        packed, layout = pack_weights(model)
+        weights[tag] = {**packed, "layout": layout, "name": tag}
+    for day, split, session, counts in tapes:
+        row = {"day": day, "split": split, "session": session}
+        for tag, model in models.items():
+            row[tag] = {k: [round(float(x), 5) for x in v]
+                        for k, v in forecast_skill(model, counts, window, horizon, cuts).items()}
+        calendar.append(row)
+        print(f"  day {day:>2} {split:<9} centred h1={row['multistep']['centred'][0]:.3f} "
+              f"h{horizon}={row['multistep']['centred'][-1]:.3f}", flush=True)
+
+    fixtures = parity_fixtures(models, tapes[0][3], window, horizon, cuts=8)
+    bundle = {
+        "config": {"dim": 96, "enc_depth": 3, "wm_depth": 2, "heads": 8,
+                   "channels": cfg.n_channels, "window": window, "horizon": horizon,
+                   "bin_ms": 20, "cuts_per_day": cuts},
+        "weights": weights, "tapes": pack_tapes(tapes),
+        "calendar": calendar, "fixtures": fixtures,
+    }
+    bundle["manifest"] = manifest({"weights": list(weights.values()),
+                                   "tapes": bundle["tapes"], "fixtures": []})
+    pathlib.Path(out).write_text(json.dumps(bundle))
+    size = pathlib.Path(out).stat().st_size
+    print(f"wrote {out}: {size/1e6:.2f} MB", flush=True)
+    return bundle
+
+
 def manifest(assets):
     """A flat description of everything shipped, so the page can print its own provenance."""
     lines = []
