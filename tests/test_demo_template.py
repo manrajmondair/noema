@@ -20,7 +20,6 @@ def page():
 
 
 @pytest.mark.parametrize("banned", [
-    "color-scheme: dark",     # the page is printed on paper, not screen-black
     "-webkit-font-smoothing",  # thins ink on a light background
     "image-rendering:pixelated",
     "border-radius:6px",
@@ -32,16 +31,27 @@ def test_forbidden_aesthetic_is_absent(page, banned):
     assert banned not in page
 
 
-def test_ramp_floor_matches_the_page_colour(page):
-    # Unfilled raster cells show the page through. If stop 0 and --paper ever drift,
-    # the field draws a visible rectangle edge against the surrounding paper.
-    paper = re.search(r"--paper:\s*(#[0-9A-Fa-f]{6})", page).group(1)
-    ramp0 = re.search(r"--ramp-0:\s*(#[0-9A-Fa-f]{6})", page).group(1)
-    assert paper.lower() == ramp0.lower()
+def test_the_page_defaults_to_light(page):
+    # Dark is offered, not assumed. The default palette is the printed one; dark only
+    # applies under an explicit mode attribute or the reader's own system preference.
+    root = page.split(":root{")[1].split("}")[0]
+    assert "color-scheme:light" in root.replace(" ", "")
+    assert 'data-mode="dark"' in page
 
 
-def test_faces_are_inlined_so_the_page_needs_no_network(page):
-    assert page.count("@font-face") == 3
+def test_both_modes_keep_the_ramp_anchored_to_the_page(page):
+    # Quiet firing must recede into the background in either mode. If stop 0 and the
+    # page colour drift apart, the field draws a visible edge against the page.
+    import re as _re
+    for mode in ("light", "dark"):
+        block = page.split(':root[data-mode="dark"]')[1 if mode == "dark" else 0]
+        paper = _re.search(r"--paper:\s*(#[0-9A-Fa-f]{6})", block).group(1)
+        ramp0 = _re.search(r"--ramp-0:\s*(#[0-9A-Fa-f]{6})", block).group(1)
+        assert paper.lower() == ramp0.lower(), f"{mode}: ramp floor is not the page colour"
+
+
+def test_one_face_carries_the_whole_page(page):
+    assert page.count("@font-face") == 1
     assert "data:font/woff2;base64," in page
     assert "https://" not in page.split("<style>")[1].split("</style>")[0]
 
@@ -69,7 +79,7 @@ def test_both_objectives_ship(page):
 def test_parity_is_reported_as_measured_against_a_gate(page):
     # A passing number nobody can see the size of is not evidence, so the page prints
     # both the measurement and the threshold and never the word "verified".
-    assert "against a 2 × 10⁻³ gate" in page
+    assert "against a gate of 2 in a thousand" in page
     assert "verified" not in page.lower()
 
 
