@@ -150,8 +150,15 @@ def main():
         else:
             train_lm, train_ls = (x.to(device) for x in _latent_stats(model, ref, args.window, device))
 
-    seen = _score(model, *train_sessions[-1][1:], args.window, vmean, vstd, device)
-    print(f"seen-session R2 = {seen:.3f}", flush=True)
+    # Score the seen session on the SAME portion of the recording the unseen sessions
+    # are scored on. Scoring it end to end while unseen sessions get only n[cut:] puts
+    # two protocols on one axis, so the size of the drift gap stops being a measurement
+    # of drift. It remains in-distribution by design — the model trained on this session.
+    _, sn, sk, sm = train_sessions[-1]
+    scut = int(len(sn) * args.calib_frac)
+    seen = _score(model, sn[scut:], sk[scut:], None if sm is None else sm[scut:],
+                  args.window, vmean, vstd, device)
+    print(f"seen-session R2 = {seen:.3f}  (same eval portion as unseen; in-distribution)", flush=True)
 
     # Score each unseen session on its held-out (eval) portion. Zero-shot uses the
     # base model; latent-align maps its latents to the training moments; few-shot
