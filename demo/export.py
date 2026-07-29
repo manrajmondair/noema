@@ -41,8 +41,8 @@ TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#FAF7F0"/>
-<meta name="description" content="A world model forecasting real human motor cortex, checked against the recording."/>
-<title>Noema — two hundred milliseconds ahead of a human motor cortex</title>
+<meta name="description" content="A world model forecasts 176 channels of real human motor cortex; the recording then arrives to check it."/>
+<title>Noema — forecasting a human motor cortex, and how fast it runs out</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%2317161A'/%3E%3C/svg%3E"/>
 <style>
 /*FONT_FACES*/
@@ -166,10 +166,12 @@ footer a{color:var(--ink-3)}
   <nav class="spine" id="spine" aria-label="Recording day"><h2>Recording day</h2></nav>
   <main>
     <header>
-      <h1>Two hundred milliseconds ahead of a human motor cortex.</h1>
-      <p class="deck">Move the mark. The model commits a forecast for all 176 channels
-      before the recording arrives to check it. Below the forecast is what the cortex
-      actually did, and the difference between them.</p>
+      <h1>A forecast of 176 channels in a human motor cortex, and how fast it runs out.</h1>
+      <p class="deck">The model commits a forecast for all 176 channels before the recording
+      arrives to check it. Across thirteen recordings it reaches a centred population
+      correlation near a tenth at one step and half that by ten — well above chance, and far
+      from reproducing the population. Beside the forecast is what the cortex actually did,
+      and the difference between them.</p>
     </header>
 
     <p class="tapelab"><span>Day <b id="d-day">0</b> · <b id="d-split">held-in</b>
@@ -199,7 +201,9 @@ footer a{color:var(--ink-3)}
       at each step ahead. The centred line is the one that counts: raw correlation is
       dominated by how much each channel fires on average, so a forecast reproducing only
       the average firing profile still scores about 0.5. The dotted line is exactly that
-      forecast.</p>
+      forecast, and on the raw metric it beats this model on twelve of the thirteen
+      recordings. The dashed line is the forecast that nothing changes at all: the model
+      clears it fourfold at one step and meets it again by the third.</p>
       <p><button class="toggle" id="t-multistep" aria-pressed="true">rollout objective</button
         ><button class="toggle" id="t-onestep" aria-pressed="false">one-step objective</button></p>
       <canvas id="plot" role="img" aria-label="Forecast skill against horizon"></canvas>
@@ -354,13 +358,24 @@ function select(){
 }
 
 function ledger(){
+  // Read every figure off the shipped data rather than restating a remembered one. An
+  // earlier version of this ledger asserted "raw is about twice this" when it was 3.7x,
+  // and said the rollout objective "holds" across a horizon it loses 57% over.
   const d=A.calendar, mean=(rs,k,i)=>rs.reduce((s,r)=>s+r[k].centred[i],0)/rs.length;
+  const met=(rs,k,m,i)=>rs.reduce((s,r)=>s+r[k][m][i],0)/rs.length;
   const hi=d.filter(r=>r.split==='held-in'), ho=d.filter(r=>r.split==='held-out');
   const out=[
     ['Forecast skill, one step ahead', mean(d,'multistep',0).toFixed(3),
-     'Centred population correlation over thirteen recordings. Raw is about twice this, which is why raw is not the headline.'],
+     'Centred population correlation over thirteen recordings. Raw correlation on the same forecasts is '
+     +(met(d,'multistep','raw',0)/mean(d,'multistep',0)).toFixed(1)+' times this, and on that raw metric a forecast emitting nothing but each '
+     +'channel average scores '+met(d,'multistep','channel_mean',0).toFixed(2)+' against this model'+String.fromCharCode(39)+'s '
+     +met(d,'multistep','raw',0).toFixed(2)+'. That is the argument for centring.'],
     ['Forecast skill, ten steps ahead', mean(d,'multistep',H-1).toFixed(3),
-     'The rollout objective holds here. The one-step objective reaches '+mean(d,'onestep',H-1).toFixed(3)+' on the same recordings.'],
+     'Under half the one-step figure: skill decays across the horizon. The rollout objective retains more than the one-step '
+     +'objective, which reaches '+mean(d,'onestep',H-1).toFixed(3)+' here, and the two are indistinguishable at one step.'],
+    ['Advantage over repeating the last bin', mean(d,'multistep',0).toFixed(2)+' against '+met(d,'multistep','persistence',0).toFixed(2),
+     'At one step the forecast is four times the do-nothing baseline. Beyond two steps the two are level, and on the seven '
+     +'days the models never read, repeating the last bin is ahead more often than not.'],
     ['Skill lost across 39 days', (100*(1-mean(ho,'multistep',0)/mean(hi,'multistep',0))).toFixed(0)+'%',
      'Held-in days against held-out days, same protocol on both. This is drift, not a benchmark score.'],
   ];
