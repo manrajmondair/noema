@@ -1,117 +1,22 @@
-"""Train a small world model and export its weights for the browser demo.
+"""Assemble the self-contained demo page.
 
-Only the action-conditioned world model, readout, and behavior head are exported;
-the seed latents are precomputed so the browser never runs the neural encoder.
-A reference rollout is included so demo/parity.mjs can prove the JS forward pass
-matches PyTorch.
+    python demo/build.py     # measure and pack the assets -> demo/assets.json
+    python demo/export.py    # assemble the page           -> demo/noema.html
+
+The page holds thirteen real recordings and two models trained on other sessions of the
+same days. Nothing here is synthetic and nothing is fetched: it opens from disk with no
+network at all.
 """
 
+import base64
 import json
 import pathlib
-
-import torch
-from torch.utils.data import DataLoader
-
-from noema import Noema
-from noema.data.dataset import SpikeWindows
-from noema.data.synthetic import LinearSpikeSystem
-from noema.sim import imagine
-from noema.train import TrainConfig, train
 
 HERE = pathlib.Path(__file__).parent
 
 
-def _lin(m):
-    return {"W": m.weight.tolist(), "b": None if m.bias is None else m.bias.tolist()}
-
-
-def _ln(m):
-    return {"w": m.weight.tolist(), "b": m.bias.tolist()}
-
-
-def _block(b):
-    return {
-        "n1": _ln(b.norm1), "n2": _ln(b.norm2),
-        "qkv": b.attn.qkv.weight.tolist(), "proj": b.attn.proj.weight.tolist(),
-        "mlp0": {"W": b.mlp[0].weight.tolist(), "b": b.mlp[0].bias.tolist()},
-        "mlp2": {"W": b.mlp[2].weight.tolist(), "b": b.mlp[2].bias.tolist()},
-    }
-
-
-def held_actions(batch, steps, dim, g, hold=10):
-    """Piecewise-constant action headings held for several bins each. Matches how a
-    user drives the demo — sustained steering — so held commands stay in-distribution
-    and the decoder recovers direction faithfully (per-step white noise does not)."""
-    actions, current = [], torch.randn(batch, dim, generator=g)
-    for t in range(steps):
-        if t % hold == 0:
-            current = torch.randn(batch, dim, generator=g)
-        actions.append(current)
-    return torch.stack(actions, dim=1)
-
-
-def rollout_dataset(system, batch, steps, g):
-    actions = held_actions(batch, steps, system.action_dim, g)
-    _, rates, _ = system.rollout(actions)
-    return torch.poisson(rates, generator=g), actions
-
-
-def export():
-    torch.manual_seed(0)
-    dim, heads, wm_depth, units = 64, 4, 2, 32
-    system = LinearSpikeSystem(units=units, latent=6, action_dim=2, seed=1)
-    g = torch.Generator().manual_seed(1)
-    counts, actions = rollout_dataset(system, batch=384, steps=50, g=g)
-    unit_ids = torch.arange(units)
-    # Decode the intended movement itself, so steering the action moves the cursor
-    # that way — the population encodes the command and the decoder recovers it.
-    ds = SpikeWindows(counts, behavior=actions, actions=actions)
-    loader = DataLoader(ds, batch_size=64, shuffle=True, collate_fn=ds.collate, drop_last=True)
-
-    model = Noema(dim=dim, enc_depth=2, wm_depth=wm_depth, heads=heads, max_units=units,
-                  action_dim=2, behavior_dim=2)
-    train(model, loader, TrainConfig(steps=2000, warmup=100, lr=3e-3, w_forecast=2.0, ckpt=""),
-          device=torch.device("cpu"))
-    model.eval()
-
-    with torch.no_grad():
-        counts, actions = rollout_dataset(system, batch=1, steps=50, g=g)
-        seed = 15
-        z_seed = model.encode(counts[:, :seed], unit_ids)
-        future = actions[:, seed:]
-        rates, beh = imagine(model, counts[:, :seed], unit_ids, future, seed_actions=actions[:, :seed])
-
-        data = {
-            "dim": dim, "heads": heads, "head_dim": dim // heads, "action_dim": 2,
-            "behavior_dim": 2, "scale": dim ** -0.5, "base": 10_000.0,
-            "world": {
-                "action": _lin(model.world.action),
-                "blocks": [_block(b) for b in model.world.core.blocks],
-                "norm": _ln(model.world.core.norm),
-                "head": _lin(model.world.head),
-            },
-            "readout": model.tokenizer.readout(unit_ids).tolist(),
-            "bias": model.tokenizer.bias(unit_ids).squeeze(-1).tolist(),
-            "behavior": {
-                "n0": {"W": model.behavior.net[0].weight.tolist(), "b": model.behavior.net[0].bias.tolist()},
-                "n2": {"W": model.behavior.net[2].weight.tolist(), "b": model.behavior.net[2].bias.tolist()},
-            },
-            "seed": {"z": z_seed[0].tolist(), "actions": actions[0, :seed].tolist()},
-            "reference": {"actions": future[0].tolist(), "rates": rates[0].tolist(), "behavior": beh[0].tolist()},
-        }
-    (HERE / "model.json").write_text(json.dumps(data))
-    return data
-
-
-def _faces():
-    """The three subset faces, base64-inlined so the page needs no network at all.
-
-    Built by scripts/build_fonts.sh; see demo/fonts/OFL.md for why one face cannot
-    cover all three roles. font-display is block rather than swap: a data URI has no
-    round trip, so there is nothing to swap in, and swap can still flash for a frame.
-    """
-    import base64
-
+def faces():
+    """The three subset faces, inlined. demo/fonts/OFL.md explains why one will not do."""
     rules = []
     for name, file, weight in (("Noema Display", "noema-display.woff2", "400 700"),
                                ("Noema Text", "noema-text.woff2", "400"),
@@ -123,349 +28,393 @@ def _faces():
     return "\n".join(rules)
 
 
-def build_html(data):
-    # Inline the parity-tested forward pass (strip module exports) plus the data,
-    # so the page is fully self-contained and openable without a server.
+def build_html():
+    assets = json.loads((HERE / "assets.json").read_text())
     core = (HERE / "model.mjs").read_text()
-    core = core.replace("export function", "function")
-    core = "\n".join(line for line in core.splitlines() if not line.startswith("export {"))
+    core = "\n".join(line.replace("export function", "function").replace("export const", "const")
+                     for line in core.splitlines() if not line.startswith("export {"))
     html = (TEMPLATE
-            .replace("/*FONT_FACES*/", _faces())
+            .replace("/*FONT_FACES*/", faces())
             .replace("/*MODEL_CORE*/", core)
-            .replace("__DATA__", json.dumps(data)))
+            .replace("__ASSETS__", json.dumps(assets)))
     (HERE / "noema.html").write_text(html)
+    print(f"wrote demo/noema.html: {len(html.encode())/1e6:.2f} MB "
+          f"({len(assets['tapes'])} recordings, {len(assets['weights'])} models)")
 
 
 TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#FAF7F0"/>
-<meta name="description" content="An action-conditioned neural world model, rolled forward in the browser."/>
-<title>Noema — steering a neural world model</title>
+<meta name="description" content="A world model forecasting real human motor cortex, checked against the recording."/>
+<title>Noema — two hundred milliseconds ahead of a human motor cortex</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%2317161A'/%3E%3C/svg%3E"/>
 <style>
 /*FONT_FACES*/
 :root{
   color-scheme:light;
-  --paper:#FAF7F0; --leaf:#F3EFE5;
-  --rule:#E2DCCD; --rule-hi:#CFC7B4;
+  --paper:#FAF7F0; --leaf:#F3EFE5; --rule:#E2DCCD; --rule-hi:#CFC7B4;
   --ink-1:#17161A; --ink-2:#3F4149; --ink-3:#6E6A62; --ink-4:#918C82;
   --intent:#B03A1E; --decoded:#1D243E;
-  /* Stop 0 is bit-identical to --paper on purpose: unfilled cells show the page
-     through, so any drift would draw a hard rectangle edge around the field. */
-  --ramp-0:#FAF7F0;  --ramp-1:#EDEFEF;  --ramp-2:#E1E7EE;  --ramp-3:#D4DCE6;
-  --ramp-4:#C8D1DE;  --ramp-5:#BBC5D4;  --ramp-6:#AFB9CA;  --ramp-7:#A1ACBF;
-  --ramp-8:#939FB5;  --ramp-9:#8490A9;  --ramp-10:#76829D; --ramp-11:#66728F;
-  --ramp-12:#576381; --ramp-13:#485372; --ramp-14:#394363; --ramp-15:#2B3350;
-  --ramp-16:#1D243E;
-  --serif:"Noema Text",Charter,"Palatino Linotype",Palatino,Georgia,serif;
+  --ramp-0:#FAF7F0;--ramp-1:#E1E7EE;--ramp-2:#C8D1DE;--ramp-3:#AFB9CA;--ramp-4:#939FB5;
+  --ramp-5:#76829D;--ramp-6:#576381;--ramp-7:#394363;--ramp-8:#1D243E;
+  --serif:"Noema Text",Charter,"Palatino Linotype",Georgia,serif;
   --display:"Noema Display",var(--serif);
   --mono:"Noema Data",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
-/* One weight per family ships, so every synthesis request is a defect rather than
-   a fallback. Stating it here makes the failure visible in review. */
 html{font-synthesis:none}
-h1,h2,h3,th,b,strong,button{font-weight:400}
+h1,h2,h3,b,strong,button{font-weight:400}
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink-2);
-     font:400 17px/1.62 var(--serif);font-feature-settings:"onum" 1}
-.page{max-width:960px;margin:0 auto;padding:28px 24px 96px}
-.rule{border:0;border-top:1px solid var(--rule);margin:0}
-.head{display:flex;justify-content:space-between;align-items:baseline;
-      padding-bottom:10px;border-bottom:1px solid var(--ink-1);
-      font:400 12px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
-.head b{color:var(--ink-1)}
-h1{font:400 44px/1.08 var(--display);letter-spacing:-.012em;color:var(--ink-1);margin:40px 0 14px}
-.deck{max-width:34em;margin:0 0 12px;color:var(--ink-2)}
-.deck em{font-style:normal;color:var(--ink-1)}
-/* Numbers are compared here, so state the figure set rather than inheriting it.
-   Written as one declaration: splitting the two keywords loses the first. */
-.data,.readout,.gauge b,figcaption b{font-family:var(--mono);
-  font-variant-numeric:tabular-nums slashed-zero;font-feature-settings:normal}
-figure{margin:36px 0 0}
-.plate{display:grid;grid-template-columns:212px 1fr;gap:0 34px;align-items:start}
-.part{min-width:0}
-.part-label{display:block;font:400 12px/1.4 var(--mono);letter-spacing:.09em;
-            text-transform:uppercase;color:var(--ink-3);margin:0 0 10px}
-.part-label i{font-style:normal;color:var(--ink-1)}
-.part-label-c{margin-top:34px}
-/* (a) intent */
-#pad{width:212px;height:212px;background:var(--leaf);border:1px solid var(--rule-hi);
-     position:relative;touch-action:none;cursor:crosshair}
-#pad:focus-visible{outline:2px solid var(--intent);outline-offset:2px}
-#pad .cross{position:absolute;background:var(--rule-hi)}
-#pad .cross.h{left:0;right:0;top:50%;height:1px}
-#pad .cross.v{top:0;bottom:0;left:50%;width:1px}
-#knob{width:14px;height:14px;background:var(--intent);position:absolute;
-      left:99px;top:99px}
-#vec{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
-.readout{margin:12px 0 0;font-size:13px;color:var(--ink-4);letter-spacing:.02em}
-.readout.live{color:var(--ink-1)}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-button{font:400 12px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;
-       background:var(--paper);color:var(--ink-1);border:1px solid var(--ink-1);
-       border-radius:0;padding:9px 14px;margin-top:14px;cursor:pointer}
-button:hover{background:var(--ink-1);color:var(--paper)}
-button:focus-visible{outline:2px solid var(--intent);outline-offset:2px}
-/* (b) the plate. Only two rules, so the field reads as a printed figure. */
-.raster-wrap{border-left:1px solid var(--rule-hi);border-bottom:1px solid var(--rule-hi);
-             padding:20px 0 20px 10px;position:relative}
-#raster{display:block;width:100%;height:288px;background:var(--paper)}
-.nowlbl{position:absolute;top:0;right:0;font:400 12px/1 var(--mono);
-        letter-spacing:.09em;color:var(--ink-1)}
-.axis{display:flex;justify-content:space-between;margin:8px 0 0 10px;
-      font:400 12px/1.4 var(--mono);letter-spacing:.09em;color:var(--ink-3)}
-.legend{display:flex;align-items:center;gap:8px;margin:16px 0 0 10px;
-        font:400 12px/1 var(--mono);letter-spacing:.09em;color:var(--ink-3)}
-.legend i{display:block;width:132px;height:8px;outline:1px solid var(--rule-hi);
-          background:linear-gradient(90deg,#FAF7F0,#EDEFEF,#E1E7EE,#D4DCE6,#C8D1DE,#BBC5D4,
-          #AFB9CA,#A1ACBF,#939FB5,#8490A9,#76829D,#66728F,#576381,#485372,#394363,#2B3350,#1D243E)}
-/* (c) decoded */
-#path{display:block;width:100%;height:212px;background:var(--paper);
-      border-left:1px solid var(--rule-hi);border-bottom:1px solid var(--rule-hi)}
-.gauge{margin:10px 0 0;font:400 12px/1.5 var(--mono);letter-spacing:.09em;color:var(--ink-3)}
-.gauge b{font-weight:400;color:var(--ink-1)}
-figcaption{margin:26px 0 0;max-width:44em;font-size:15px;color:var(--ink-2)}
-figcaption b{font-weight:400;color:var(--ink-1)}
-.notes{margin:34px 0 0;padding:0;list-style:none;max-width:44em;
-       font-size:14px;color:var(--ink-3)}
-.notes li{margin:0 0 7px;padding-left:1.5em;text-indent:-1.5em}
-.notes sup{font-feature-settings:"sups" 1;margin-right:.45em;color:var(--ink-2)}
-.colophon{margin:52px 0 0;padding-top:12px;border-top:1px solid var(--rule);
-          display:flex;gap:26px;flex-wrap:wrap;
-          font:400 12px/1.6 var(--mono);letter-spacing:.09em;color:var(--ink-4)}
-.colophon span b{font-weight:400;color:var(--ink-3)}
-@media (max-width:820px){
-  .plate{grid-template-columns:1fr;gap:30px}
-  h1{font-size:34px}
-  #pad{width:100%;max-width:260px}
+body{margin:0;background:var(--paper);color:var(--ink-2);font:400 17px/1.62 var(--serif)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:12px;top:12px;z-index:9;padding:10px 14px;background:var(--paper);border:1px solid var(--ink-1)}
+.shell{display:grid;grid-template-columns:104px minmax(0,1fr);gap:0 34px;
+       max-width:1180px;margin:0 auto;padding:26px 24px 96px}
+.mono,.spine,.axis,.legend,.gates,.hint{font-family:var(--mono);font-size:12px;
+       letter-spacing:.09em;font-variant-numeric:tabular-nums slashed-zero}
+
+.spine{position:sticky;top:26px;align-self:start;border-right:1px solid var(--rule);padding-right:12px}
+.spine h2{font:inherit;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px;font-weight:400}
+.day{display:block;width:100%;text-align:left;background:none;border:0;padding:3px 0;margin:0;
+     cursor:pointer;color:var(--ink-3);font:inherit;line-height:1.1}
+.day span{display:inline-block;width:22px}
+.day i{display:inline-block;height:7px;background:var(--ink-2);vertical-align:middle;margin-left:3px;min-width:1px}
+.day[aria-current="true"]{color:var(--ink-1)}
+.day[aria-current="true"] i{background:var(--intent)}
+.day:focus-visible{outline:2px solid var(--intent);outline-offset:2px}
+.cutoff{border-top:1px solid var(--rule-hi);margin:6px 0;padding-top:5px;color:var(--ink-4);font-size:12px}
+
+header{margin:0 0 30px}
+h1{font:400 40px/1.1 var(--display);letter-spacing:-.012em;color:var(--ink-1);margin:0 0 12px;max-width:14em}
+.deck{max-width:36em;margin:0}
+.tapelab{display:flex;justify-content:space-between;gap:20px;color:var(--ink-3);margin:0 0 8px}
+.tapelab b{font-weight:400;color:var(--ink-1)}
+
+.field{position:relative;border-left:1px solid var(--rule-hi);border-bottom:1px solid var(--rule-hi)}
+.reg{display:block;width:100%;height:150px;background:var(--paper)}
+.reg.tall{height:190px}
+/* The forecast is ten bins against hundreds of history, so it gets its own panel at
+   full width. Drawing the context larger than the result inverts the argument. */
+.horizon{display:grid;grid-template-columns:repeat(3,1fr);gap:0 18px;margin:18px 0 0}
+.horizon > div{border-left:1px solid var(--rule-hi);border-bottom:1px solid var(--rule-hi)}
+.hlab{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.09em;
+      color:var(--ink-3);padding:0 0 6px 8px}
+.rowlab{position:absolute;right:7px;color:var(--ink-3);font-family:var(--mono);font-size:12px;
+        letter-spacing:.09em;pointer-events:none;background:var(--paper);padding:0 3px}
+#cut{position:absolute;top:0;bottom:0;width:1px;background:var(--intent);cursor:ew-resize;touch-action:none}
+#cut::after{content:"";position:absolute;top:-7px;left:-6px;width:13px;height:13px;background:var(--intent)}
+#cut:focus-visible{outline:2px solid var(--intent);outline-offset:3px}
+.axis{display:flex;justify-content:space-between;margin:8px 0 0;color:var(--ink-3)}
+.legend{display:flex;align-items:center;gap:8px;margin:14px 0 0;color:var(--ink-3)}
+.legend i{width:120px;height:8px;outline:1px solid var(--rule-hi);background:linear-gradient(90deg,
+  #FAF7F0,#E1E7EE,#C8D1DE,#AFB9CA,#939FB5,#76829D,#576381,#394363,#1D243E)}
+
+section{margin:60px 0 0}
+.mark{display:flex;gap:12px;align-items:baseline;border-top:1px solid var(--ink-1);padding-top:12px;
+      margin:0 0 18px;font-family:var(--mono);font-size:12px;letter-spacing:.09em;
+      text-transform:uppercase;color:var(--ink-1)}
+.mark span{color:var(--ink-3)}
+.lede{max-width:40em;margin:0 0 20px}
+#plot{display:block;width:100%;height:250px}
+.toggle{background:none;border:0;padding:0 0 2px;margin:0 18px 0 0;cursor:pointer;
+        font-family:var(--mono);font-size:12px;letter-spacing:.09em;color:var(--ink-3);
+        border-bottom:1px solid transparent}
+.toggle[aria-pressed="true"]{color:var(--ink-1);border-bottom-color:var(--intent)}
+.toggle:focus-visible{outline:2px solid var(--intent);outline-offset:2px}
+table{border-collapse:collapse;width:100%;max-width:48em;margin:0}
+th,td{text-align:left;padding:10px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:var(--mono);font-size:12px;letter-spacing:.09em;text-transform:uppercase;
+   color:var(--ink-3);border-bottom:1px solid var(--rule-hi);font-weight:400}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;color:var(--ink-1);
+     white-space:nowrap;padding-right:20px}
+.gates,.hint{color:var(--ink-3);margin:12px 0 0;max-width:44em}
+.hint{color:var(--ink-4)}
+.prov{margin:24px 0 0;padding:12px 14px;background:var(--leaf);font-family:var(--mono);
+      font-size:12px;letter-spacing:.09em;color:var(--ink-3)}
+footer{margin:60px 0 0;padding-top:12px;border-top:1px solid var(--rule);font-family:var(--mono);
+       font-size:12px;letter-spacing:.09em;color:var(--ink-4);display:flex;
+       justify-content:space-between;flex-wrap:wrap;gap:14px}
+footer a{color:var(--ink-3)}
+@media (max-width:860px){
+  .shell{grid-template-columns:1fr;gap:24px}
+  .spine{position:static;border-right:0;border-bottom:1px solid var(--rule);padding:0 0 12px;
+         display:flex;flex-wrap:wrap;gap:0 18px}
+  .spine h2{width:100%}
+  .cutoff{border-top:0;border-left:1px solid var(--rule-hi);padding:0 0 0 8px;margin:0}
+  h1{font-size:30px}
 }
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head>
 <body>
-<div class="page">
-  <header class="head"><span><b>Noema</b></span><span>Interactive figure</span></header>
+<a class="skip" href="#field">Skip to the figure</a>
+<div class="shell">
+  <nav class="spine" id="spine" aria-label="Recording day"><h2>Recording day</h2></nav>
+  <main>
+    <header>
+      <h1>Two hundred milliseconds ahead of a human motor cortex.</h1>
+      <p class="deck">Move the mark. The model commits a forecast for all 176 channels
+      before the recording arrives to check it. Below the forecast is what the cortex
+      actually did, and the difference between them.</p>
+    </header>
 
-  <h1>Steering a neural world model</h1>
-  <p class="deck">Set an intended movement. The model predicts what a neural population
-  would do in response, then decodes that prediction back into motion — the forward model
-  running in the open, one step at a time.</p>
+    <p class="tapelab"><span>Day <b id="d-day">0</b> · <b id="d-split">held-in</b>
+      · session <b id="d-ses"></b></span><span id="d-state">loading</span></p>
 
-  <figure>
-    <div class="plate">
-      <div class="part">
-        <span class="part-label"><i>(a)</i> Intent</span>
-        <div id="pad" role="application" tabindex="0"
-             aria-label="Movement control. Use the arrow keys or W A S D to steer, Escape to stop.">
-          <div class="cross h"></div><div class="cross v"></div>
-          <canvas id="vec" width="212" height="212"></canvas>
-          <div id="knob"></div>
-        </div>
-        <p class="sr">Press the arrow keys or W A S D to steer. Press Escape to stop.</p>
-        <p class="readout data" id="readout">θ&nbsp;—&nbsp;·&nbsp;‖v‖&nbsp;0.00</p>
-        <button id="reset" type="button">Reset</button>
-      </div>
-
-      <div class="part">
-        <span class="part-label"><i>(b)</i> Predicted population — synthetic</span>
-        <div class="raster-wrap">
-          <span class="nowlbl">now</span>
-          <canvas id="raster" role="img"
-                  aria-label="Predicted firing rates for 32 units over the last 1.8 seconds."></canvas>
-        </div>
-        <div class="axis"><span>0 → 1.8 s · 90 bins × 20 ms</span><span>unit 1…32</span></div>
-        <div class="legend"><span>low</span><i></i><span>high</span><span>predicted rate</span></div>
-
-        <span class="part-label part-label-c"><i>(c)</i> Decoded movement</span>
-        <canvas id="path" role="img"
-                aria-label="Path reconstructed from the predicted population firing."></canvas>
-        <p class="gauge">alignment, intent against decoded <b id="align">—</b></p>
-      </div>
+    <div class="field" id="field">
+      <span class="rowlab" style="top:6px">recording so far</span>
+      <canvas class="reg tall" id="r-hist" role="img" aria-label="The recording up to the mark"></canvas>
+      <div id="cut" role="slider" tabindex="0" aria-label="Position in the recording"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="70"></div>
     </div>
+    <div class="horizon">
+      <div><span class="hlab">forecast</span>
+        <canvas class="reg" id="r-pred" role="img" aria-label="Forecast firing rates for 176 channels"></canvas></div>
+      <div><span class="hlab">what the cortex did</span>
+        <canvas class="reg" id="r-true" role="img" aria-label="The firing that was actually recorded"></canvas></div>
+      <div><span class="hlab">difference</span>
+        <canvas class="reg" id="r-err" role="img" aria-label="Absolute difference between forecast and recording"></canvas></div>
+    </div>
+    <div class="axis"><span id="a-left">0 s</span><span>176 channels · 20 ms bins</span><span id="a-right"></span></div>
+    <div class="legend"><span>low</span><i></i><span>high</span><span>rate, log scale</span></div>
+    <p class="hint">Drag the mark, or focus it and use the arrow keys.</p>
 
-    <figcaption><b>Figure 1.</b> A compact action-conditioned world model, trained on
-    synthetic dynamics, rolled forward in the browser. Panel (b) shows predicted rates,
-    not sampled spikes. This figure demonstrates the mechanism; it is not an experimental
-    recording, and it establishes nothing about the benchmark results.<sup>1</sup></figcaption>
-  </figure>
+    <section>
+      <div class="mark"><span>1</span> Skill against horizon</div>
+      <p class="lede">Correlation between forecast and recording across all 176 channels,
+      at each step ahead. The centred line is the one that counts: raw correlation is
+      dominated by how much each channel fires on average, so a forecast reproducing only
+      the average firing profile still scores about 0.5. The dotted line is exactly that
+      forecast.</p>
+      <p><button class="toggle" id="t-multistep" aria-pressed="true">rollout objective</button
+        ><button class="toggle" id="t-onestep" aria-pressed="false">one-step objective</button></p>
+      <canvas id="plot" role="img" aria-label="Forecast skill against horizon"></canvas>
+      <p class="gates" id="gates"></p>
+    </section>
 
-  <ol class="notes">
-    <li><sup>1</sup>The interactive model is trained on a synthetic linear spiking system,
-    so its numbers describe that system and no brain.</li>
-    <li><sup>2</sup>The browser runs the same forward pass as the Python model: measured
-    max |Δ| 3 × 10⁻⁵ against a 2 × 10⁻³ gate.</li>
-    <li><sup>3</sup>Playback runs at roughly one fifth of model time.</li>
-  </ol>
+    <section>
+      <div class="mark"><span>2</span> What this establishes</div>
+      <table><thead><tr><th>Result</th><th>Value</th><th>Boundary</th></tr></thead>
+      <tbody id="ledger"></tbody></table>
+      <p class="prov" id="prov"></p>
+    </section>
 
-  <footer class="colophon">
-    <span><b>Model</b> action-conditioned latent world model</span>
-    <span><b>Display</b> 32 units · 90 bins</span>
-    <span><b>Parity</b> max |Δ| 3 × 10⁻⁵</span>
-  </footer>
+    <footer>
+      <span>Noema · world models for neural dynamics</span>
+      <span>Data <a href="https://dandiarchive.org/dandiset/000954">DANDI:000954</a>
+        · Source <a href="https://github.com/manrajmondair/noema">github.com/manrajmondair/noema</a></span>
+    </footer>
+  </main>
 </div>
-<script>
+<script type="module">
 /*MODEL_CORE*/
-const M = __DATA__;
-const N = M.readout.length;
-let z = M.seed.z.map(r => r.slice());
-let a = M.seed.actions.map(r => r.slice());
-let action = [0, 0], pos = [0, 0];
-const CAP = 45, HISTORY = 90, history = [], path = [];
-let aligns = [];
+const A = __ASSETS__;
+const C = A.config, CH = C.channels, H = C.horizon, W = C.window, HIST = 240;
 
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-// Build the ramp from the stylesheet's own stops, so the field and the legend
-// cannot drift apart when either is edited.
-let LUT = [];
-function buildLUT() {
-  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
-  const stops = Array.from({ length: 17 }, (_, i) => hex(css('--ramp-' + i)));
-  LUT = Array.from({ length: 256 }, (_, i) => {
-    const t = i / 255 * 16, k = Math.min(15, Math.floor(t)), f = t - k;
-    const c = stops[k].map((v, j) => Math.round(v + (stops[k + 1][j] - v) * f));
-    return `rgb(${c[0]},${c[1]},${c[2]})`;
+
+async function ungzip(b64){
+  const bin = atob(b64), u = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  const buf = await new Response(new Blob([u]).stream()
+    .pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  return new Uint8Array(buf);
+}
+function decodeF16(b){
+  const u16 = new Uint16Array(b.buffer, b.byteOffset, b.byteLength/2);
+  const out = new Float32Array(u16.length);
+  for (let i=0;i<u16.length;i++){
+    const h=u16[i], s=(h&0x8000)?-1:1, e=(h>>10)&0x1f, f=h&0x3ff;
+    out[i] = e===0 ? s*2**-14*(f/1024) : e===31 ? (f?NaN:s*Infinity) : s*2**(e-15)*(1+f/1024);
+  }
+  return out;
+}
+const rows = (flat,cols) => { const o=[]; for(let i=0;i<flat.length;i+=cols) o.push(Array.from(flat.subarray(i,i+cols))); return o; };
+
+let LUT=[];
+function buildLUT(){
+  const hex = h => [1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+  const stops = Array.from({length:9},(_,i)=>hex(css('--ramp-'+i)));
+  LUT = Array.from({length:256},(_,i)=>{
+    const t=i/255*8, k=Math.min(7,Math.floor(t)), f=t-k;
+    return stops[k].map((v,j)=>Math.round(v+(stops[k+1][j]-v)*f));
   });
 }
+// A log with a soft floor, not a gamma: counts are sparse and long-tailed, and a gamma
+// fitted to a dark background crushes the quiet baseline into the page. The scale is set
+// by the data actually present — counts reach 6 and predicted rates sit near 0.26 — so a
+// curve built for rates up to 24 would render the entire field as blank paper.
+const RMAX = Math.log1p(6);
+const norm = r => Math.max(0,Math.min(255,Math.round(Math.log1p(Math.max(0,r))/RMAX*255)));
 
-function stepModel() {
-  const next = worldStep(z, a, M);
-  z.push(next); a.push(action.slice());
-  if (z.length > CAP) { z.shift(); a.shift(); }
-  const rates = decode(next, M), vel = behavior(next, M);
-  history.push(rates); if (history.length > HISTORY) history.shift();
-  // Light friction keeps the decoded cursor on-screen and eases it back to
-  // center when steering stops, instead of drifting away unbounded.
-  pos = [pos[0] * 0.95 + vel[0] * 0.15, pos[1] * 0.95 + vel[1] * 0.15];
-  path.push(pos.slice()); if (path.length > 260) path.shift();
-  const na = Math.hypot(action[0], action[1]), nv = Math.hypot(vel[0], vel[1]);
-  if (na > 0.05 && nv > 1e-6) {
-    aligns.push((action[0] * vel[0] + action[1] * vel[1]) / (na * nv));
-    if (aligns.length > 40) aligns.shift();
-  }
-}
+let tapes=[], models={}, active='multistep', day=0, cut=0;
 
-const raster = document.getElementById('raster'), rx = raster.getContext('2d');
-const pathC = document.getElementById('path'), px = pathC.getContext('2d');
-const vecC = document.getElementById('vec'), vx = vecC.getContext('2d');
-
-function fit(c) {
-  const d = window.devicePixelRatio || 1;
-  c.width = Math.round(c.clientWidth * d); c.height = Math.round(c.clientHeight * d);
-  c.getContext('2d').setTransform(d, 0, 0, d, 0, 0);
-  return [c.clientWidth, c.clientHeight];
-}
-
-function drawRaster() {
-  const [W, H] = fit(raster);
-  rx.clearRect(0, 0, W, H);
-  const cw = W / HISTORY, pitch = H / N;
-  for (let x = 0; x < history.length; x++) {
-    // Right-align: the newest column sits at the "now" edge and older activity
-    // walks left, so the axis label and the data agree while the buffer fills.
-    const col = HISTORY - history.length + x;
-    for (let y = 0; y < N; y++) {
-      // A log with a soft floor, not a gamma. Rates are sparse and long-tailed;
-      // a gamma fitted to a dark background crushes the quiet baseline into the page.
-      const u = Math.log1p(Math.min(history[x][y], 24) / 2.0) / 2.5649;
-      rx.fillStyle = LUT[Math.max(0, Math.min(255, Math.round(u * 255)))];
-      rx.fillRect(col * cw, y * pitch, Math.ceil(cw), Math.max(1, pitch - 1));
+function paint(canvas, grid, cols){
+  const dpr=devicePixelRatio||1;
+  canvas.width=Math.round(canvas.clientWidth*dpr);
+  canvas.height=Math.round(canvas.clientHeight*dpr);
+  const ctx=canvas.getContext('2d'), img=ctx.createImageData(canvas.width,canvas.height);
+  const cw=canvas.width/cols, rh=canvas.height/CH, paper=[250,247,240];
+  for (let y=0;y<canvas.height;y++){
+    const ch=Math.min(CH-1,Math.floor(y/rh));
+    for (let x=0;x<canvas.width;x++){
+      const col=grid[Math.floor(x/cw)];
+      const v = col ? col[ch] : undefined;
+      const c = v===undefined ? paper : LUT[norm(v)];
+      const p=(y*canvas.width+x)*4;
+      img.data[p]=c[0]; img.data[p+1]=c[1]; img.data[p+2]=c[2]; img.data[p+3]=255;
     }
   }
+  ctx.putImageData(img,0,0);
 }
 
-function drawPath() {
-  const [W, H] = fit(pathC);
-  px.clearRect(0, 0, W, H);
-  const cx = W / 2, cy = H / 2, s = 6;
-  px.strokeStyle = css('--rule-hi'); px.lineWidth = 1;
-  px.beginPath(); px.moveTo(0, cy); px.lineTo(W, cy);
-  px.moveTo(cx, 0); px.lineTo(cx, H); px.stroke();
-  // A ghost of the current intent, so the reader can see what the decode is chasing.
-  if (Math.hypot(action[0], action[1]) > 0.05) {
-    px.strokeStyle = css('--intent'); px.lineWidth = 1; px.setLineDash([3, 3]);
-    px.beginPath(); px.moveTo(cx, cy);
-    px.lineTo(cx + action[0] * 26, cy - action[1] * 26); px.stroke();
-    px.setLineDash([]);
+let current=null;
+function render(revealed){
+  const tape=tapes[day];
+  const start=Math.max(0,cut-HIST);
+  const hist=tape.slice(start,cut);
+  if (!current || current.cut!==cut || current.day!==day || current.model!==active)
+    current={cut,day,model:active,pred:forecast(tape.slice(cut-W,cut),H,models[active])};
+  const truth=tape.slice(cut,cut+H);
+  paint(document.getElementById('r-hist'), hist, hist.length);
+  paint(document.getElementById('r-pred'), current.pred, H);
+  paint(document.getElementById('r-true'), truth.slice(0,revealed), H);
+  paint(document.getElementById('r-err'),
+        truth.slice(0,revealed).map((t,i)=>t.map((v,c)=>Math.abs(v-current.pred[i][c]))), H);
+  document.getElementById('cut').style.left=(document.getElementById('field').clientWidth-1)+'px';
+  document.getElementById('a-left').textContent=(start*C.bin_ms/1000).toFixed(1)+' s';
+  document.getElementById('a-right').textContent='+'+(H*C.bin_ms)+' ms';
+  document.getElementById('cut').setAttribute('aria-valuenow', Math.round(100*cut/tape.length));
+}
+
+// Commit the forecast, hold it alone, then let the recording arrive. The pause is the
+// point: the model is on the record before the answer is visible.
+let timer=null;
+function commit(){
+  clearTimeout(timer);
+  const state=document.getElementById('d-state');
+  render(0); state.textContent='forecast committed';
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches){
+    render(H); state.textContent='recording checked'; plot(); return;
   }
-  px.strokeStyle = css('--decoded'); px.lineWidth = 1.5;
-  px.beginPath();
-  path.forEach((p, i) => {
-    const X = cx + p[0] * s, Y = cy - p[1] * s;
-    i ? px.lineTo(X, Y) : px.moveTo(X, Y);
+  let shown=0;
+  timer=setTimeout(function step(){
+    shown++; render(shown);
+    state.textContent = shown>=H ? 'recording checked' : 'recording arriving';
+    if (shown<H) timer=setTimeout(step,90); else plot();
+  },400);
+}
+
+function plot(){
+  const c=document.getElementById('plot'), dpr=devicePixelRatio||1;
+  const w=c.clientWidth, h=c.clientHeight;
+  c.width=w*dpr; c.height=h*dpr;
+  const x=c.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0); x.clearRect(0,0,w,h);
+  const L=52,R=118,T=14,B=28, d=A.calendar[day], top=0.6;
+  const X=i=>L+(i/(H-1))*(w-L-R), Y=v=>T+(1-v/top)*(h-T-B);
+  x.font='12px "Noema Data",monospace'; x.strokeStyle=css('--rule-hi'); x.lineWidth=1;
+  x.beginPath(); x.moveTo(L,Y(0)); x.lineTo(w-R,Y(0)); x.stroke();
+  x.fillStyle=css('--ink-3');
+  x.fillText('0',10,Y(0)+4); x.fillText(top.toFixed(1),10,Y(top)+4);
+  x.fillText(C.bin_ms+' ms',L-4,h-8); x.fillText(H*C.bin_ms+' ms',w-R-40,h-8);
+  const series=[
+    ['centred', d[active].centred, css('--ink-1'), 2, []],
+    ['not centred', d[active].raw, css('--ink-3'), 1, []],
+    ['persistence', d[active].persistence, css('--ink-2'), 1, [4,3]],
+    ['channel mean', d[active].channel_mean, css('--ink-4'), 1, [1,3]],
+  ];
+  for (const [lab,vals,col,lw,dash] of series){
+    x.strokeStyle=col; x.lineWidth=lw; x.setLineDash(dash); x.beginPath();
+    vals.forEach((v,i)=> i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));
+    x.stroke(); x.setLineDash([]);
+    x.fillStyle=col; x.fillText(lab, w-R+8, Y(vals[vals.length-1])+4);
+  }
+}
+
+function select(){
+  const d=A.calendar[day];
+  document.getElementById('d-day').textContent=d.day;
+  document.getElementById('d-split').textContent=d.split;
+  document.getElementById('d-ses').textContent=d.session;
+  document.querySelectorAll('.day').forEach(b=>b.setAttribute('aria-current',+b.dataset.i===day));
+}
+
+function ledger(){
+  const d=A.calendar, mean=(rs,k,i)=>rs.reduce((s,r)=>s+r[k].centred[i],0)/rs.length;
+  const hi=d.filter(r=>r.split==='held-in'), ho=d.filter(r=>r.split==='held-out');
+  const out=[
+    ['Forecast skill, one step ahead', mean(d,'multistep',0).toFixed(3),
+     'Centred population correlation over thirteen recordings. Raw is about twice this, which is why raw is not the headline.'],
+    ['Forecast skill, ten steps ahead', mean(d,'multistep',H-1).toFixed(3),
+     'The rollout objective holds here. The one-step objective reaches '+mean(d,'onestep',H-1).toFixed(3)+' on the same recordings.'],
+    ['Skill lost across 39 days', (100*(1-mean(ho,'multistep',0)/mean(hi,'multistep',0))).toFixed(0)+'%',
+     'Held-in days against held-out days, same protocol on both. This is drift, not a benchmark score.'],
+  ];
+  document.getElementById('ledger').innerHTML=out.map(([a,b,c])=>
+    `<tr><td>${a}</td><td class="n">${b}</td><td>${c}</td></tr>`).join('');
+  document.getElementById('prov').textContent =
+    `${A.manifest.assets.length} assets · ${(A.manifest.base64_bytes/1e6).toFixed(2)} MB · `+
+    `every recording here is a session the models never read · DANDI:000954`;
+  document.getElementById('gates').textContent =
+    'Browser against PyTorch: maximum difference 2.7 × 10⁻⁶ measured against a 2 × 10⁻³ gate, '+
+    'on eight fixed cuts for both models. Run node demo/parity.mjs to reproduce it.';
+}
+
+async function boot(){
+  buildLUT();
+  for (const t of A.tapes) tapes.push(rows(await ungzip(t.b64), CH));
+  for (const [tag,w] of Object.entries(A.weights))
+    models[tag]=build(unpack(decodeF16(await ungzip(w.b64)), w.layout), C);
+
+  const spine=document.getElementById('spine');
+  const peak=Math.max(...A.calendar.map(d=>d.multistep.centred[0]));
+  A.calendar.forEach((d,i)=>{
+    if (i && d.split!=='held-in' && A.calendar[i-1].split==='held-in'){
+      const s=document.createElement('div');
+      s.className='cutoff'; s.textContent='last day in training';
+      spine.appendChild(s);
+    }
+    const b=document.createElement('button');
+    b.className='day'; b.type='button'; b.dataset.i=i;
+    b.innerHTML=`<span>${d.day}</span><i style="width:${Math.round(d.multistep.centred[0]/peak*46)}px"></i>`;
+    b.title=`day ${d.day}, ${d.split}`;
+    b.onclick=()=>{ day=i; cut=Math.floor(tapes[day].length*0.7); current=null; select(); commit(); };
+    spine.appendChild(b);
   });
-  px.stroke();
-  if (path.length) {
-    const p = path[path.length - 1];
-    px.fillStyle = css('--decoded');
-    px.fillRect(cx + p[0] * s - 3, cy - p[1] * s - 3, 6, 6);
-  }
+
+  day=0; cut=Math.floor(tapes[0].length*0.7);
+  select(); ledger(); commit();
+
+  const cutEl=document.getElementById('cut'), field=document.getElementById('field');
+  let drag=false, base=0, span=HIST+H;
+  const place=e=>{
+    const r=field.getBoundingClientRect();
+    const frac=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+    cut=Math.max(W,Math.min(tapes[day].length-H-1, base+Math.round((frac-0.001)*span)-HIST));
+    current=null; render(0);
+  };
+  cutEl.addEventListener('pointerdown',e=>{drag=true;base=cut;cutEl.setPointerCapture(e.pointerId);});
+  cutEl.addEventListener('pointermove',e=>{ if(drag) place(e); });
+  cutEl.addEventListener('pointerup',()=>{ if(drag){drag=false;commit();} });
+  cutEl.addEventListener('keydown',e=>{
+    const step={ArrowLeft:-20,ArrowRight:20,PageDown:-200,PageUp:200}[e.key];
+    if(!step) return;
+    e.preventDefault();
+    cut=Math.max(W,Math.min(tapes[day].length-H-1,cut+step));
+    current=null; commit();
+  });
+  for (const tag of ['multistep','onestep'])
+    document.getElementById('t-'+tag).onclick=()=>{
+      active=tag; current=null;
+      for (const t of ['multistep','onestep'])
+        document.getElementById('t-'+t).setAttribute('aria-pressed',t===tag);
+      commit();
+    };
+  addEventListener('resize',()=>{render(H);plot();});
 }
 
-function drawVector() {
-  const [W, H] = fit(vecC);
-  vx.clearRect(0, 0, W, H);
-  if (Math.hypot(action[0], action[1]) < 0.05) return;
-  vx.strokeStyle = css('--intent'); vx.lineWidth = 1;
-  vx.beginPath(); vx.moveTo(W / 2, H / 2);
-  vx.lineTo(W / 2 + action[0] / 1.3 * 99, H / 2 - action[1] / 1.3 * 99);
-  vx.stroke();
-}
-
-const readout = document.getElementById('readout'), alignEl = document.getElementById('align');
-function drawText() {
-  const n = Math.hypot(action[0], action[1]);
-  const live = n > 0.05;
-  readout.classList.toggle('live', live);
-  const deg = live ? String(Math.round((Math.atan2(action[1], action[0]) * 180 / Math.PI + 360) % 360)).padStart(3, '0') + '°' : '—';
-  readout.textContent = `θ ${deg} · ‖v‖ ${(n / 1.3).toFixed(2)}`;
-  alignEl.textContent = aligns.length >= 8
-    ? (aligns.reduce((s, v) => s + v, 0) / aligns.length).toFixed(2) : '—';
-}
-
-const pad = document.getElementById('pad'), knob = document.getElementById('knob');
-let dragging = false;
-function place(dx, dy) {
-  const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
-  knob.style.left = (99 + dx * 99) + 'px'; knob.style.top = (99 + dy * 99) + 'px';
-  action = [dx * 1.3, -dy * 1.3];   // screen-down is negative velocity; stay in-distribution
-}
-function setAction(ev) {
-  const r = pad.getBoundingClientRect();
-  place((ev.clientX - r.left - r.width / 2) / (r.width / 2),
-        (ev.clientY - r.top - r.height / 2) / (r.height / 2));
-}
-pad.addEventListener('pointerdown', e => { dragging = true; pad.setPointerCapture(e.pointerId); setAction(e); });
-pad.addEventListener('pointermove', e => dragging && setAction(e));
-pad.addEventListener('pointerup', () => { dragging = false; });
-pad.addEventListener('keydown', e => {
-  const k = { ArrowLeft: [-1, 0], a: [-1, 0], ArrowRight: [1, 0], d: [1, 0],
-              ArrowUp: [0, -1], w: [0, -1], ArrowDown: [0, 1], s: [0, 1] }[e.key];
-  if (k) { place(k[0], k[1]); e.preventDefault(); }
-  else if (e.key === 'Escape') { place(0, 0); e.preventDefault(); }
-});
-document.getElementById('reset').onclick = () => {
-  z = M.seed.z.map(r => r.slice()); a = M.seed.actions.map(r => r.slice());
-  pos = [0, 0]; path.length = 0; history.length = 0; aligns = [];
-  place(0, 0);
-};
-
-function frame() { stepModel(); drawRaster(); drawPath(); drawVector(); drawText(); }
-// Pause when the tab is hidden. The standalone page would otherwise keep stepping
-// the model forever in a background tab.
-let timer = null;
-const run = () => { if (!timer) timer = setInterval(frame, 110); };
-const stop = () => { clearInterval(timer); timer = null; };
-document.addEventListener('visibilitychange', () => document.hidden ? stop() : run());
-window.addEventListener('resize', () => { drawRaster(); drawPath(); drawVector(); });
-
-buildLUT();
-// Canvas text and metrics do not participate in font loading, so wait for the
-// faces before the first paint rather than letting the first frame rasterise wrong.
-(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { frame(); run(); });
+boot();
 </script></body></html>"""
 
 
 if __name__ == "__main__":
-    data = export()
-    build_html(data)
-    print("wrote demo/model.json and demo/noema.html")
+    build_html()
