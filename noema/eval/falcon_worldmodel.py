@@ -137,6 +137,8 @@ def main():
     p.add_argument("--samples", type=int, default=1, help="Poisson draws per imagined rate path")
     p.add_argument("--sessions", type=int, default=0, help="limit sessions (0 = all; use 1 for a smoke test)")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--ckpt", default="", help="save the trained weights here, so the model that "
+                                              "was measured is the model that ships")
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -169,7 +171,9 @@ def main():
                   f"behavior={d.get('loss_behavior', 0):.3f}", flush=True)
 
     train(model, loader, TrainConfig(steps=args.steps, warmup=100, lr=3e-4, w_behavior=args.w_behavior,
-                                     w_forecast=args.w_forecast, ckpt=""), device=device, on_log=log)
+                                     w_forecast=args.w_forecast, ckpt=args.ckpt), device=device, on_log=log)
+    if args.ckpt:
+        print(f"saved {args.ckpt}", flush=True)
 
     if args.fidelity or not args.sim2real:
         raw, centred = _rollout_fidelity(model, minival, args.window, args.horizon, device)
