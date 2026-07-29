@@ -9,31 +9,34 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%2317161A'/%3E%3C/svg%3E">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Noema — a neural world model, with its limits visible">
-  <meta property="og:description" content="Two public benchmark results, an interactive mechanism, and three reviewed studies that failed their own prespecified criteria.">
+  <meta property="og:description" content="Two public benchmark results, a forecast of real human motor cortex you can check against the recording, and three reviewed studies that failed their own prespecified criteria.">
   <meta property="og:url" content="https://noema-bci.vercel.app/">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <a class="skip-link" href="#mechanism">Skip to the figure</a>
+  <a class="skip-link" href="#forecast">Skip to the results</a>
   <main class="wrap">
     <nav class="topbar" aria-label="Primary navigation">
       <a class="wordmark" href="#top">Noema</a>
       <div>
         <a href="#results">Results</a>
-        <a href="#mechanism">Mechanism</a>
+        <a href="#forecast">Forecast</a>
+        <a href="#study">Evidence</a>
         <a href="#method">Method</a>
         <a href="https://github.com/manrajmondair/noema">Repository</a>
       </div>
     </nav>
+    <button id="mode" class="modebtn" type="button" aria-pressed="false">Dark</button>
 
     <header id="top" class="title-block">
       <div class="title-main">
         <h1>A neural world model, with its limits visible</h1>
         <p class="sub">
-          Two public benchmark results, an interactive mechanism you can steer, and three
-          reviewed studies that failed their own prespecified criteria. Each is reported
-          with the boundary of what it establishes.
+          Two public benchmark results, a forecast of real human motor cortex you can
+          check against the recording that followed, and three reviewed studies that
+          failed their own prespecified criteria. Each is reported with the boundary of
+          what it establishes.
         </p>
       </div>
       <!-- The limits occupy the same grid slot as a result. That placement is the
@@ -51,83 +54,51 @@
       </div>
     </header>
 
-    <section class="doc-section" id="mechanism" aria-labelledby="mech-title">
-      <p class="section-mark"><span>1</span> Mechanism</p>
-      <h2 id="mech-title" class="sr-only">Mechanism</h2>
+    <section class="doc-section" id="forecast" aria-labelledby="forecast-title">
+      <p class="section-mark"><span>1</span> Forecast</p>
+      <h2 id="forecast-title" class="sr-only">Forecast</h2>
       <p class="lede">
-        The figure below is the model itself, exported and executed in the page. It is
-        fitted to synthetic dynamics, so it shows how the mechanism behaves, not how well
-        it recovers a brain. Drag the pad, or focus it and use the arrow keys.
+        The model runs in the browser on thirteen recordings of one person's motor cortex,
+        176 channels, spanning thirty-nine days. Put a mark anywhere on a recording and it
+        commits a forecast of the next 200 ms. The forecast is held alone, and then the
+        recording arrives to check it. Nothing is selected for you and nothing is smoothed
+        after the fact.
       </p>
 
-      <div class="rig" aria-label="World-model signal path">
-        <section class="stage-col" aria-labelledby="intent-title">
-          <h3 class="stage" id="intent-title"><span>(a)</span> Intent</h3>
-          <div class="panel">
-            <div id="pad" role="application" tabindex="0"
-                 aria-label="Movement control. Use arrow keys or W A S D."
-                 aria-describedby="pad-help">
-              <div class="grat-h" aria-hidden="true"></div>
-              <div class="grat-v" aria-hidden="true"></div>
-              <div id="vector" aria-hidden="true"></div>
-              <div id="knob" aria-hidden="true"></div>
-            </div>
-          </div>
-          <div class="cap">
-            <output id="readout" class="idle" aria-label="Movement vector">θ —° · ‖v‖ —</output>
-            <span>drag / arrows</span>
-          </div>
-          <p class="sr-only" id="pad-help">Press arrow keys or W A S D to steer. Press Escape to stop.</p>
-        </section>
-
-        <section class="stage-col" aria-labelledby="population-title">
-          <h3 class="stage" id="population-title"><span>(b)</span> Predicted population <i>— synthetic model</i></h3>
-          <div class="panel panel-raster">
-            <div class="raster-wrap">
-              <canvas id="raster" width="90" height="32" role="img"
-                      aria-label="Predicted firing-rate heatmap, 32 units over 1.8 seconds">
-                Predicted firing-rate heatmap.
-              </canvas>
-              <div class="now" aria-hidden="true"></div>
-              <span class="nowlbl" aria-hidden="true">now</span>
-            </div>
-          </div>
-          <div class="cap">
-            <span>unit 1…32</span>
-            <span class="legend" aria-label="Firing scale from low to high"><i aria-hidden="true"></i></span>
-            <span>0 → 1.8 s · 90 bins × 20 ms</span>
-          </div>
-        </section>
-
-        <section class="stage-col" aria-labelledby="movement-title">
-          <h3 class="stage" id="movement-title"><span>(c)</span> Decoded movement</h3>
-          <div class="panel">
-            <canvas id="path" width="220" height="200" role="img"
-                    aria-label="Path reconstructed from predicted population firing">
-              Movement path reconstructed from predicted firing.
-            </canvas>
-          </div>
-          <div class="cap">
-            <span>reconstructed from firing</span>
-            <output id="align" aria-label="Intent and decoded movement alignment">align —</output>
-          </div>
-        </section>
+      <div class="ledger-flat" aria-label="Forecast skill, mean across thirteen recordings">
+        <div class="lrow">
+          <span>Correlation at 20 ms, per-channel mean removed</span>
+          <b>0.118</b>
+          <small>The headline. Roughly four times what repeating the last bin achieves.</small>
+        </div>
+        <div class="lrow">
+          <span>Correlation at 200 ms, per-channel mean removed</span>
+          <b>0.051</b>
+          <small>Fifty-seven per cent of the skill is gone by the tenth step, and repeating
+            the last bin has caught up.</small>
+        </div>
+        <div class="lrow">
+          <span>Same forecast, mean left in</span>
+          <b>0.429</b>
+          <small>A forecast emitting nothing but each channel's long-run average scores
+            0.494 by this measure, beating the model on twelve of the thirteen recordings.
+            That is why the centred number leads.</small>
+        </div>
       </div>
 
-      <!-- The load control is a text affordance in the headnote rather than a button
-           above the figure: it is a property of the figure, not a call to action. -->
       <p class="headnote">
-        Figure runs locally. <button id="toggle" type="button" class="affordance">Load instrument</button>
-        · <button id="reset" type="button" class="affordance" disabled>Reset</button>
-        · 2.4 MB, fetched once. <span id="status" role="status" aria-live="polite">Model loads on first use.</span>
+        <a class="affordance" href="/forecast">Open the forecast</a>
+        · 4.2 MB, self-contained, no network once loaded · runs on your machine, not ours
       </p>
 
       <p class="figcaption">
-        <b>Figure 1.</b> A compact action-conditioned world model rolled forward in the
-        browser. Panel (b) shows predicted rates, not sampled spikes, at roughly one fifth
-        of model time. The model was fitted to synthetic population dynamics. It
-        demonstrates the mechanism; the quantitative results are in the ledger above, and
-        the cross-region tests are in §2.
+        Two models ship, identical in every respect but the training objective: one
+        predicts a single step ahead, the other is trained on its own ten-step rollouts.
+        The difference between them is the only architectural claim on the page, and it
+        appears entirely at long horizon — at one step they are indistinguishable, which
+        is what should happen. The recordings shipped are session two of each day; the
+        models read session one, and the two are checked for shared rows before either
+        leaves Python.
       </p>
     </section>
 
@@ -149,8 +120,8 @@
         repository at this revision
       </p>
       <p class="study-note">
-        No selected animal and no success trace is shown. The mechanism in §1 is
-        synthetic; everything in this section is aggregate evidence from real recordings.
+        No selected animal and no success trace is shown. Every number in this section is
+        aggregate evidence from real recordings, reported at the cohort level.
       </p>
     </section>
 
@@ -158,18 +129,17 @@
       <p class="section-mark"><span>3</span> Method</p>
       <h2 id="method-title" class="sr-only">Method</h2>
       <p class="lede">
-        The instrument in §1 is a synthetic mechanism demonstration, not an experimental
-        recording and not a cross-region result. Its computed signal path is
-        action → latent dynamics → predicted firing rates → decoded movement. The browser
-        executes the exported model directly, and its rollout is checked numerically
-        against the Python implementation.
+        The forecast in §1 is the exported model executed directly by the browser, not a
+        recording of one. Its rollout and its scoring are both checked numerically against
+        the Python implementation before the page is built.
       </p>
       <dl>
-        <div><dt>Model</dt><dd>Action-conditioned latent world model</dd></div>
-        <div><dt>Display</dt><dd>32 predicted units · 90 bins × 20 ms · 1.8 s of model time, shown at about one fifth speed</dd></div>
-        <div><dt>Scale</dt><dd>Logarithmic ink density; see the legend in Figure 1</dd></div>
-        <div><dt>Colour</dt><dd>Vermilion is your command; ink is what the model produced</dd></div>
-        <div><dt>Parity</dt><dd>Measured maximum difference 3 × 10<sup>−5</sup>, against an enforced 2 × 10<sup>−3</sup> gate</dd></div>
+        <div><dt>Model</dt><dd>Latent world model rolled forward without reading the future</dd></div>
+        <div><dt>Source</dt><dd>DANDI:000954 · FALCON H1 · one human participant · 176 channels · 20 ms bins</dd></div>
+        <div><dt>Metric</dt><dd>Correlation across channels with each channel's long-run mean removed</dd></div>
+        <div><dt>Splits</dt><dd>Shipped recordings asserted disjoint from training by content, not by filename</dd></div>
+        <div><dt>Colour</dt><dd>Vermilion is what you control; ink is what the model produced. Colour never states a result</dd></div>
+        <div><dt>Parity</dt><dd>Forward pass, metric and decode each measured against an enforced gate</dd></div>
         <div><dt>Evidence</dt><dd>Fixed seeds · animal bootstrap · observational</dd></div>
       </dl>
     </section>
@@ -179,7 +149,7 @@
       <span>Source: <a href="https://github.com/manrajmondair/noema">github.com/manrajmondair/noema</a></span>
     </footer>
   </main>
-  <script type="module" src="./app.mjs"></script>
   <script type="module" src="./study.mjs"></script>
+  <script type="module" src="./mode.mjs"></script>
 </body>
 </html>

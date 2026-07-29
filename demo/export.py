@@ -220,7 +220,9 @@ footer a{color:var(--ink-3)}
     </section>
 
     <footer>
-      <span>Noema · world models for neural dynamics</span>
+      <!-- Absolute, not "/": this file is also handed around on its own, where a
+           root-relative link back to the results would resolve to nothing. -->
+      <span><a href="https://noema-bci.vercel.app/">Noema</a> · world models for neural dynamics</span>
       <span>Data <a href="https://dandiarchive.org/dandiset/000954">DANDI:000954</a>
         · Source <a href="https://github.com/manrajmondair/noema">github.com/manrajmondair/noema</a></span>
     </footer>
