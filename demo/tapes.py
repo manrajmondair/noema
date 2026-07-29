@@ -87,7 +87,10 @@ def extract(root="data/000954", bins=2250, task="h1"):
 
     out = []
     for offset, split, path in tape_paths(root):
-        (name, neural, _, _), = load_sessions(path, task)
+        (_, neural, _, _), = load_sessions(path, task)
+        # Take the session id from the filename rather than load_sessions' fixed-offset
+        # slice, which lands mid-word and puts "alib_ses-..." in the provenance line.
+        name = re.search(r"ses-(\d{8}T\d{6})", path).group(1)
         window = neural[:bins]
         peak = window.max()
         if peak > 255:

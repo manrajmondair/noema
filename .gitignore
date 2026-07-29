@@ -52,3 +52,6 @@ local_prediction.pkl
 *.h5
 submission*.h5
 eval_data_test.h5
+
+# Generated demo asset bundle (rebuild with demo/build.py)
+demo/assets.json
