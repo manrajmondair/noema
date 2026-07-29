@@ -99,7 +99,7 @@ h1{font:400 40px/1.1 var(--display);letter-spacing:-.012em;color:var(--ink-1);ma
 .horizon > div{border-left:1px solid var(--rule-hi);border-bottom:1px solid var(--rule-hi)}
 .hlab{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.09em;
       color:var(--ink-3);padding:0 0 6px 8px}
-.rowlab{position:absolute;right:7px;color:var(--ink-3);font-family:var(--mono);font-size:12px;
+.rowlab{position:absolute;top:6px;right:7px;color:var(--ink-3);font-family:var(--mono);font-size:12px;
         letter-spacing:.09em;pointer-events:none;background:var(--paper);padding:0 3px}
 #cut{position:absolute;top:0;bottom:0;width:1px;background:var(--intent);cursor:ew-resize;touch-action:none}
 #cut::after{content:"";position:absolute;top:-7px;left:-6px;width:13px;height:13px;background:var(--intent)}
@@ -161,7 +161,7 @@ footer a{color:var(--ink-3)}
       · session <b id="d-ses"></b></span><span id="d-state">loading</span></p>
 
     <div class="field" id="field">
-      <span class="rowlab" style="top:6px">recording so far</span>
+      <span class="rowlab">recording so far</span>
       <canvas class="reg tall" id="r-hist" role="img" aria-label="The recording up to the mark"></canvas>
       <div id="cut" role="slider" tabindex="0" aria-label="Position in the recording"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="70"></div>
@@ -375,7 +375,10 @@ async function boot(){
     }
     const b=document.createElement('button');
     b.className='day'; b.type='button'; b.dataset.i=i;
-    b.innerHTML=`<span>${d.day}</span><i style="width:${Math.round(d.multistep.centred[0]/peak*46)}px"></i>`;
+    const num=document.createElement('span'); num.textContent=d.day;
+    const bar=document.createElement('i');
+    bar.style.width=Math.round(d.multistep.centred[0]/peak*46)+'px';
+    b.append(num,bar);
     b.title=`day ${d.day}, ${d.split}`;
     b.onclick=()=>{ day=i; cut=Math.floor(tapes[day].length*0.7); current=null; select(); commit(); };
     spine.appendChild(b);
