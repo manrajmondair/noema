@@ -75,6 +75,27 @@ def assert_disjoint(tapes, training):
     return True
 
 
+def extract(root="data/000954", bins=2250, task="h1"):
+    """The thirteen shipped tapes, one per recording day.
+
+    Returns `[(day_offset, split, session_id, counts), ...]` where counts is
+    `[bins, channels]` uint8. Spike counts in this dataset already fit in a byte, which
+    is asserted rather than assumed — silently clipping a real count would fabricate
+    data the reader is being invited to check the model against.
+    """
+    from noema.eval.falcon import load_sessions
+
+    out = []
+    for offset, split, path in tape_paths(root):
+        (name, neural, _, _), = load_sessions(path, task)
+        window = neural[:bins]
+        peak = window.max()
+        if peak > 255:
+            raise AssertionError(f"{name}: spike count {peak} does not fit in uint8")
+        out.append((offset, split, name, window.astype(np.uint8)))
+    return out
+
+
 def _contains(haystack, needle):
     """True if `needle` appears as a contiguous run of rows inside `haystack`."""
     if len(needle) == 0 or len(needle) > len(haystack):

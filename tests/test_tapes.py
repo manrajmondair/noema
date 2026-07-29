@@ -54,6 +54,20 @@ def test_every_day_can_train_on_one_session_and_ship_another():
 
 
 @needs_data
+def test_shipped_tapes_do_not_overlap_the_training_recordings():
+    # The unit tests above cover the comparison logic; this runs it on the real bytes,
+    # which is the only version of the guarantee that can actually fail in production.
+    from demo.tapes import extract
+    from noema.eval.falcon import load_sessions
+
+    tapes = extract()
+    assert len(tapes) == 13
+    assert all(a.dtype == np.uint8 and a.shape[1] == 176 for *_, a in tapes)
+    training = [n for path in training_paths() for _, n, _, _ in load_sessions(path)]
+    assert assert_disjoint([a for *_, a in tapes], training)
+
+
+@needs_data
 def test_no_shipped_file_is_ever_a_training_file():
     shipped = {path for _, _, path in tape_paths()}
     assert shipped.isdisjoint(set(training_paths()))
