@@ -28,6 +28,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "demo" / "site"
 FIGURE = ROOT / "demo" / "noema.html"
+# Each deployment gets its own URL, so the public address has to be re-pointed at it.
+ALIAS = "noema-bci.vercel.app"
+PROJECT = "noema"
+CLI = "58.1.0"  # 58.3.0 resolves a dependency that is not published
 
 # Everything the browser is allowed to ask for, named one by one. A directory copy
 # would sweep up .env.local and .vercel/ along with it.
@@ -84,6 +88,7 @@ def stage(into):
     # cleanUrls turns forecast.html into /forecast, which is what the site links to.
     (into / "forecast.html").write_text(figure)
     (into / "vercel.json").write_text(json.dumps(config(figure), indent=2) + "\n")
+
     return into
 
 
@@ -103,8 +108,24 @@ def main():
     print(f"  {'':<20} {total:>9,} total\n{out}")
 
     if args.ship:
-        subprocess.run(["npx", "vercel@58.1.0", "deploy", "--prod", "--yes", str(out)],
-                       check=True)
+        vercel = ["npx", f"vercel@{CLI}"]
+        # Link by name, not by copying a project.json around: the one in demo/site
+        # pointed at a project that no longer exists, and an unresolvable link makes
+        # the CLI quietly create a new project named after the temporary directory.
+        # Everything below runs inside the staged directory — given a path argument
+        # instead, the CLI reads the link from the working directory and ignores it.
+        subprocess.run([*vercel, "link", "--yes", "--project", PROJECT], cwd=out, check=True)
+        # Linking drops an OIDC token here, and unlike .vercel/ this one would upload.
+        for leaked in out.glob(".env*.local"):
+            leaked.unlink()
+        # The deployment URL is the only thing the CLI writes to stdout. `alias set`
+        # cannot infer it, so name the deployment explicitly rather than letting it
+        # guess and fail after the upload has already happened.
+        done = subprocess.run([*vercel, "deploy", "--prod", "--yes"],
+                              cwd=out, check=True, capture_output=True, text=True)
+        url = done.stdout.strip().splitlines()[-1]
+        subprocess.run([*vercel, "alias", "set", url, ALIAS], cwd=out, check=True)
+        print(f"{ALIAS} -> {url}")
 
 
 if __name__ == "__main__":
