@@ -16,9 +16,9 @@ const pathContext = pathCanvas.getContext("2d");
 
 const CAP = 45;
 const HISTORY = 90;
-const MAGMA = [
-  [0, 0, 4], [40, 11, 84], [92, 18, 110], [140, 41, 129], [190, 56, 118],
-  [230, 84, 97], [251, 135, 97], [254, 195, 128], [252, 253, 191],
+const RAMP = [
+  [250, 247, 240], [225, 231, 238], [200, 209, 222], [175, 185, 202],
+  [147, 159, 181], [118, 130, 157], [87, 99, 129], [57, 67, 99], [29, 36, 62],
 ];
 
 let model;
@@ -132,13 +132,13 @@ function stepModel() {
   if (path.length > 260) path.shift();
 }
 
-function magma(value, output) {
+function ramp(value, output) {
   const t = Math.max(0, Math.min(1, value));
   const scaled = t * 8;
   const index = Math.floor(scaled);
   const mix = scaled - index;
-  const first = MAGMA[index];
-  const second = MAGMA[Math.min(index + 1, 8)];
+  const first = RAMP[index];
+  const second = RAMP[Math.min(index + 1, 8)];
   output[0] = Math.floor(first[0] + (second[0] - first[0]) * mix);
   output[1] = Math.floor(first[1] + (second[1] - first[1]) * mix);
   output[2] = Math.floor(first[2] + (second[2] - first[2]) * mix);
@@ -154,7 +154,7 @@ function drawRaster() {
 
   for (let x = 0; x < history.length; x += 1) {
     for (let y = 0; y < units; y += 1) {
-      magma(Math.min(1, history[x][y] / 6) ** .7, color);
+      ramp(Math.log1p(Math.min(history[x][y], 24) / 2) / 2.5649, color);
       const column = HISTORY - history.length + x;
       const offset = (y * HISTORY + column) * 4;
       image.data[offset] = color[0];
@@ -228,7 +228,7 @@ function drawPath() {
 
   const x = centerX + head[0] * scale;
   const y = centerY - head[1] * scale;
-  pathContext.fillStyle = "#d5dce7";
+  pathContext.fillStyle = "#1D243E";
   pathContext.beginPath();
   pathContext.arc(x, y, 2.6, 0, Math.PI * 2);
   pathContext.fill();

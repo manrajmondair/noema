@@ -1,17 +1,26 @@
+@font-face{font-family:"Noema Display";src:url(./noema-display.woff2) format("woff2");font-weight:400 700;font-style:normal;font-display:swap}
+@font-face{font-family:"Noema Text";src:url(./noema-text.woff2) format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Noema Data";src:url(./noema-data.woff2) format("woff2");font-weight:400;font-style:normal;font-display:swap}
+
 :root {
-  color-scheme: dark;
-  --sans: "Avenir Next", "Neue Haas Grotesk Text Pro", "Helvetica Neue", sans-serif;
-  --mono: "SFMono-Regular", "IBM Plex Mono", "Cascadia Mono", Menlo, monospace;
-  --bg: #0a0c11;
-  --surface: #0e1219;
-  --hairline: #1c2230;
-  --hairline-hi: #293040;
-  --ink-1: #d5dce7;
-  --ink-2: #7e8aa0;
-  --ink-3: #717c91;
-  --accent: #58b7d4;
-  --accent-soft: rgb(88 183 212 / 38%);
-  --error: #e78876;
+  color-scheme: light;
+  --serif: "Noema Text", Charter, "Palatino Linotype", Palatino, Georgia, serif;
+  --display: "Noema Display", var(--serif);
+  --sans: var(--serif);
+  --mono: "Noema Data", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bg: #FAF7F0;
+  --surface: #F3EFE5;
+  --hairline: #E2DCCD;
+  --hairline-hi: #CFC7B4;
+  --ink-1: #17161A;
+  --ink-2: #3F4149;
+  --ink-3: #6E6A62;
+  /* One spot colour, reserved for what the reader controls. It never states a
+     result, which is what lets the evidence section carry three null studies. */
+  --accent: #B03A1E;
+  --accent-soft: rgb(176 58 30 / 30%);
+  --error: #B03A1E;
+  --decoded: #1D243E;
 }
 
 * {
@@ -24,12 +33,10 @@ html {
 
 body {
   margin: 0;
-  background:
-    linear-gradient(var(--hairline) 1px, transparent 1px) 0 0 / 100% 72px,
-    var(--bg);
+  background: var(--bg);
   color: var(--ink-1);
-  font-family: var(--sans);
-  -webkit-font-smoothing: antialiased;
+  font-family: var(--serif);
+  font-synthesis: none;
 }
 
 button,
@@ -265,9 +272,8 @@ button:disabled {
   position: absolute;
   top: 92px;
   left: 92px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+  width: 14px;
+  height: 14px;
   background: var(--accent);
   pointer-events: none;
   transition: transform .1s cubic-bezier(.4, 0, .2, 1);
@@ -344,7 +350,7 @@ button:disabled {
   display: inline-block;
   width: 64px;
   height: 5px;
-  background: linear-gradient(90deg, #000004, #2c1164, #711f81, #b5367a, #e55064, #fb8761, #fec287, #fcfdbf);
+  background: linear-gradient(90deg,#FAF7F0,#E1E7EE,#C8D1DE,#AFB9CA,#939FB5,#76829D,#576381,#394363,#1D243E);
 }
 
 #path {
@@ -458,10 +464,6 @@ button:disabled {
   color: var(--ink-2);
   font-size: 11px;
   text-align: right;
-}
-
-.study-head .decision[data-status="supported"] {
-  color: var(--accent);
 }
 
 .route {
@@ -579,7 +581,7 @@ button:disabled {
   height: 9px;
   margin-left: -4px;
   border: 1px solid var(--bg);
-  background: var(--accent);
+  background: var(--ink-1);
 }
 
 .forest-row output {
