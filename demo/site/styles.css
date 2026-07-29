@@ -61,6 +61,9 @@ header {
   max-width: 760px;
 }
 
+/* The title block spans the measure; only prose inside it is held to 760px. */
+header.title-block { max-width: none; }
+
 .stage,
 .cap,
 .controls,
@@ -123,7 +126,7 @@ h1 {
   min-height: 34px;
   margin: 30px 0 26px;
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: .04em;
 }
 
@@ -131,7 +134,6 @@ button {
   min-height: 34px;
   padding: 0 13px;
   border: 1px solid var(--hairline-hi);
-  border-radius: 2px;
   background: var(--surface);
   color: var(--ink-2);
   cursor: pointer;
@@ -156,7 +158,8 @@ button:disabled {
 
 .rig {
   display: grid;
-  grid-template-columns: 220px 28px minmax(300px, 1fr) 28px 220px;
+  grid-template-columns: 220px minmax(300px, 1fr) 220px;
+  gap: 34px;
   align-items: start;
 }
 
@@ -171,9 +174,9 @@ button:disabled {
   gap: 10px;
   margin: 0 0 14px;
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: .14em;
+  letter-spacing: .09em;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -210,7 +213,7 @@ button:disabled {
   gap: 12px;
   margin-top: 14px;
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: .04em;
 }
 
@@ -218,23 +221,12 @@ button:disabled {
   position: relative;
   width: 200px;
   height: 200px;
-  border: 1px solid var(--hairline);
-  border-radius: 50%;
+  border: 1px solid var(--hairline-hi);
   background: var(--surface);
   cursor: crosshair;
   touch-action: none;
 }
 
-.grat-ring {
-  position: absolute;
-  top: 30px;
-  left: 30px;
-  width: 140px;
-  height: 140px;
-  border: 1px solid var(--hairline-hi);
-  border-radius: 50%;
-  pointer-events: none;
-}
 
 .grat-h,
 .grat-v {
@@ -375,7 +367,7 @@ button:disabled {
 
 .evidence-intro .eyebrow {
   color: var(--ink-3);
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: .12em;
   text-transform: uppercase;
 }
@@ -384,7 +376,7 @@ button:disabled {
   max-width: 62ch;
   margin: 0;
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
@@ -395,7 +387,7 @@ button:disabled {
 .benchmark-ledger h3 {
   margin-bottom: 12px;
   color: var(--ink-3);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 400;
   letter-spacing: .1em;
   text-transform: uppercase;
@@ -403,12 +395,13 @@ button:disabled {
 
 .benchmark-row {
   display: grid;
-  grid-template-columns: minmax(130px, .75fr) 100px minmax(170px, 1fr) minmax(240px, 1.4fr);
-  gap: 18px;
+  grid-template-columns: 1fr auto;
+  gap: 4px 18px;
+  min-width: 0;
   padding: 12px 0;
   border-top: 1px solid var(--hairline);
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .benchmark-row strong,
@@ -421,6 +414,14 @@ button:disabled {
   color: var(--ink-3);
   font-size: inherit;
 }
+
+/* The scorer and the boundary run full width beneath the score, so the boundary
+   reads as part of the result rather than as a column that can be skipped. */
+.benchmark-row > :nth-child(3),
+.benchmark-row > :nth-child(4) { grid-column: 1 / -1; }
+.benchmark-row > :nth-child(2) { text-align: right; white-space: nowrap; }
+.benchmark-row > :nth-child(4) { color: var(--ink-3); }
+.benchmark-ledger h3 { margin-top: 0; }
 
 .study-list {
   margin-top: 68px;
@@ -448,13 +449,13 @@ button:disabled {
 }
 
 .study h3 {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .study-head p {
   margin: 8px 0 0;
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -462,7 +463,7 @@ button:disabled {
   margin: 0;
   max-width: 320px;
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -486,7 +487,7 @@ button:disabled {
 
 .route small {
   color: var(--ink-3);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .forest {
@@ -496,7 +497,7 @@ button:disabled {
 .forest figcaption {
   margin-bottom: 24px;
   color: var(--ink-2);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .forest-axis,
@@ -509,7 +510,7 @@ button:disabled {
 .forest-axis {
   margin-bottom: 10px;
   color: var(--ink-3);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .forest-axis-track {
@@ -530,7 +531,7 @@ button:disabled {
   align-items: center;
   border-top: 1px solid var(--hairline);
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .forest-row:last-of-type {
@@ -586,7 +587,7 @@ button:disabled {
 
 .forest-row output {
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .study-notes {
@@ -600,7 +601,7 @@ button:disabled {
   padding: 12px 0;
   border-top: 1px solid var(--hairline);
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .study-note-row:last-child {
@@ -621,13 +622,13 @@ button:disabled {
   max-width: 80ch;
   margin: 24px 0 0;
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
 .study-error {
   color: var(--error);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .method {
@@ -638,14 +639,14 @@ button:disabled {
   padding-top: 22px;
   border-top: 1px solid var(--hairline);
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
 .method h2 {
   margin: 0;
   color: var(--ink-2);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: .12em;
   text-transform: uppercase;
@@ -675,7 +676,7 @@ footer {
   justify-content: space-between;
   margin-top: 42px;
   color: var(--ink-3);
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: .1em;
   text-transform: uppercase;
 }
@@ -815,3 +816,53 @@ footer {
     transition: none;
   }
 }
+
+
+/* ── document structure ─────────────────────────────────────────────────────
+   The page is set as a paper: a masthead, a title block whose ledger sits beside
+   the headline, then numbered sections. Sectioning is a rule and whitespace; there
+   is no card anywhere on this page. */
+.title-block { display: grid; grid-template-columns: 1fr; gap: 40px; margin: 56px 0 0; }
+@media (min-width: 900px) { .title-block { grid-template-columns: 7fr 4fr; gap: 64px; } }
+.title-main { min-width: 0; }
+.title-main h1 { margin: 0 0 18px; max-width: 12em; }
+.title-main .sub { max-width: 34em; }
+.ledger { display: flex; flex-direction: column; min-width: 0; }
+.ledger-cell, #benchmark-ledger > * { border-top: 1px solid var(--hairline); padding: 18px 0; }
+.ledger-limits p:last-child { margin: 6px 0 0; font-size: 14px; color: var(--ink-3); }
+.ledger .eyebrow { margin: 0; }
+
+.doc-section { margin: 96px 0 0; }
+.section-mark {
+  display: flex; align-items: baseline; gap: 14px; margin: 0 0 22px;
+  padding-top: 14px; border-top: 1px solid var(--ink-1);
+  font-family: var(--mono); font-size: 12px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--ink-1);
+}
+.section-mark span { color: var(--ink-3); }
+.lede { max-width: 42em; margin: 0 0 32px; color: var(--ink-2); }
+.figcaption { max-width: 44em; margin: 26px 0 0; font-size: 15px; color: var(--ink-2); }
+.figcaption b { font-weight: 400; color: var(--ink-1); }
+
+/* The load control is a property of the figure, so it is set as running text with
+   an underline, not as a button competing with the figure for attention. */
+.headnote {
+  margin: 22px 0 0; font-family: var(--mono); font-size: 12px;
+  letter-spacing: .09em; color: var(--ink-3);
+}
+.affordance {
+  background: none; border: 0; border-radius: 0; padding: 0; margin: 0;
+  font: inherit; color: var(--ink-1); cursor: pointer;
+  border-bottom: 1px solid var(--accent);
+}
+.affordance:hover:not(:disabled) { border-bottom-width: 2px; }
+.affordance:disabled { color: var(--ink-3); border-bottom-color: var(--hairline-hi); cursor: default; }
+
+/* The generator for these numbers is not in the public tree, so the page says so
+   rather than presenting them as if the path back to code were open. */
+.provenance {
+  margin: 34px 0 0; padding: 12px 14px; background: var(--surface);
+  font-family: var(--mono); font-size: 12px; letter-spacing: .09em; color: var(--ink-3);
+}
+.stage i { font-style: normal; color: var(--ink-3); }
+footer a { color: var(--ink-2); }
