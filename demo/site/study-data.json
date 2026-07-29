@@ -7,10 +7,10 @@
       "value": "0.367 co-bps"
     },
     {
-      "boundary": "Behavior decoding; not held-out transfer",
       "name": "FALCON H1",
-      "scope": "Official held-in evaluator",
-      "value": "0.87 R\u00b2"
+      "value": "R² ~0.6",
+      "scope": "Cross-session, session-disjoint",
+      "boundary": "Zero-shot across recording days; held-in figure withdrawn pending re-measurement"
     }
   ],
   "schema_version": 2,
@@ -23,7 +23,7 @@
             0.03602368384599686,
             0.11791111528873444
           ],
-          "label": "Regional world model \u2212 direct horizon",
+          "label": "Regional world model − direct horizon",
           "value": 0.06873723122283133
         },
         {
@@ -31,7 +31,7 @@
             -0.1359708607196808,
             0.16273340582847595
           ],
-          "label": "Regional world model \u2212 condition-time PSTH",
+          "label": "Regional world model − condition-time PSTH",
           "value": 0.010274737474109246
         }
       ],
@@ -54,11 +54,11 @@
             0.044323354959487915,
             0.1914178878068924
           ],
-          "label": "Frozen features \u2212 scratch readout \u00b7 32 trials",
+          "label": "Frozen features − scratch readout · 32 trials",
           "value": 0.113601391170463
         },
         {
-          "boundary": "r -0.003; R\u00b2 -0.171; no dynamic claim",
+          "boundary": "r -0.003; R² -0.171; no dynamic claim",
           "interval": [
             0.02267402410507202,
             0.10653479397296906
@@ -85,7 +85,7 @@
           "VISa"
         ]
       },
-      "scope": "4 held-out animals \u00b7 7 total QC-passing CA1 units \u00b7 seeds 0/1/2",
+      "scope": "4 held-out animals · 7 total QC-passing CA1 units · seeds 0/1/2",
       "status": "not_supported",
       "title": "IBL original study"
     },
@@ -97,7 +97,7 @@
             -0.010607800209269238,
             0.008725669463121612
           ],
-          "label": "Regional world model \u2212 direct horizon",
+          "label": "Regional world model − direct horizon",
           "value": -0.000767940879834221
         },
         {
@@ -105,7 +105,7 @@
             -0.043656269022854764,
             0.021155118211848473
           ],
-          "label": "Regional world model \u2212 training-only condition PSTH",
+          "label": "Regional world model − training-only condition PSTH",
           "value": -0.012341896619060082
         }
       ],
@@ -138,7 +138,7 @@
           "VISa"
         ]
       },
-      "scope": "10 coverage-complete animals \u00b7 one session each \u00b7 frozen seeds 0/1/2",
+      "scope": "10 coverage-complete animals · one session each · frozen seeds 0/1/2",
       "status": "not_supported",
       "title": "IBL frozen replication"
     },
@@ -150,7 +150,7 @@
             -0.015298207307372772,
             0.06256300458119698
           ],
-          "label": "VISp history \u2212 stimulus/behavior context",
+          "label": "VISp history − stimulus/behavior context",
           "value": 0.02029873245026636
         },
         {
@@ -158,7 +158,7 @@
             0.0051104315351273594,
             0.013716661311076997
           ],
-          "label": "VISp history \u2212 condition-preserving shuffle",
+          "label": "VISp history − condition-preserving shuffle",
           "value": 0.009100461981959565
         },
         {
@@ -166,7 +166,7 @@
             0.010660601586370583,
             0.13733027453153243
           ],
-          "label": "VISp history \u2212 zero-source control",
+          "label": "VISp history − zero-source control",
           "value": 0.07396231356340252
         },
         {
@@ -174,7 +174,7 @@
             -0.004185695811422974,
             0.019030021870541623
           ],
-          "label": "VISp history \u2212 static source model",
+          "label": "VISp history − static source model",
           "value": 0.006782228535930217
         }
       ],
@@ -201,7 +201,7 @@
           "VISl"
         ]
       },
-      "scope": "8 selection animals \u00b7 primary horizon 20 ms \u00b7 seeds 0/1/2",
+      "scope": "8 selection animals · primary horizon 20 ms · seeds 0/1/2",
       "status": "stopped_at_selection",
       "title": "Allen cross-region study"
     }
