@@ -30,12 +30,18 @@ trials whose observed neurons do not determine the reach ([details](scripts/nlb_
 
 **Forward model & transfer** (real data)
 
-| FALCON H1 held-in | FALCON H1 zero-shot | World-model rollout |
-|---:|---:|---:|
-| R² 0.87 | R² ~0.6 | corr 0.45 over 10 bins |
+FALCON H1 cross-session zero-shot velocity R² is **~0.6**: train on ten held-in sessions, decode
+unseen sessions from the same subject on different recording days. The splits are session-disjoint,
+so this measures the electrode drift that the benchmark exists to test.
 
-The world model predicts firing one step ahead at corr ~0.47 and, with a rollout objective, holds
-near 0.45 across the horizon instead of decaying.
+Held-in and world-model rollout figures are **withdrawn pending re-measurement**. In this dandiset
+each `held-in-minival` recording is a byte-identical prefix of the matching `held-in-calib`
+recording, so any run that fits on calibration and scores minival is scoring its own training data.
+`disjoint_calib` in [`noema/eval/falcon.py`](noema/eval/falcon.py) now excises the overlap, and
+`gaussian_smooth` grew a `causal` flag — a centered kernel reads ~480 ms of future into every
+feature, which flatters an offline baseline against a streaming decoder. Under the corrected
+protocol the classical Wiener-filter reference is R² 0.31, down from 0.54 measured the old way.
+Cross-session and NLB results are unaffected: neither touches minival.
 
 ## Architecture
 

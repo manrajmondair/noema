@@ -27,6 +27,24 @@ def load_sessions(pattern, task="h1"):
     return out
 
 
+def disjoint_calib(calib, minival):
+    """Calibration sessions with the minival recording removed.
+
+    In this dandiset each held-in-minival file is a byte-identical PREFIX of the
+    held-in-calib file for the same session (verified on all 13). Training on all of
+    calib and then scoring minival therefore scores a model on its own training data,
+    which inflates the result in proportion to how much the model can memorize. Drop
+    the overlapping prefix so the two splits are genuinely disjoint.
+    """
+    session = lambda name: name.split("ses-")[-1]
+    overlap = {session(name): len(neural) for name, neural, _, _ in minival}
+    trimmed = []
+    for name, neural, kin, mask in calib:
+        cut = overlap.get(session(name), 0)
+        trimmed.append((name, neural[cut:], kin[cut:], None if mask is None else mask[cut:]))
+    return trimmed
+
+
 def load_falcon(path, task="h1", window=50):
     from falcon_challenge.config import FalconTask
     from falcon_challenge.dataloaders import load_nwb

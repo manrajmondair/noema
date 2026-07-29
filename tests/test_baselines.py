@@ -13,6 +13,18 @@ def test_gaussian_smooth_reduces_temporal_variation():
     assert rough(y) < rough(x)  # output is smoother in time than the raw signal
 
 
+def test_causal_smoothing_cannot_see_the_future():
+    # The centered kernel is an acausal offline filter; anything compared against a
+    # streaming decoder must not read bins that have not happened yet.
+    x = torch.zeros(1, 40, 1)
+    x[0, 20, 0] = 1.0
+    centered = gaussian_smooth(x, sigma=2.0)
+    causal = gaussian_smooth(x, sigma=2.0, causal=True)
+    assert centered[0, :20, 0].sum() > 0  # the spike leaks backwards in time
+    assert causal[0, :20, 0].sum() == 0  # ...and must not once causal
+    assert causal[0, 20:, 0].sum() > 0
+
+
 def test_ridge_velocity_baseline_decodes():
     system = LinearSpikeSystem(units=40, latent=6, action_dim=2, seed=1)
     c, _, a, b = system.sample(batch=256, steps=30)

@@ -22,7 +22,7 @@ from ..sim.rollout import imagine
 from ..train import TrainConfig, train
 from ..utils import default_device
 from .baselines import ridge_velocity
-from .falcon import load_sessions
+from .falcon import disjoint_calib, load_sessions
 from .metrics import r2_weighted
 from .sim2real import imagine_windows
 
@@ -145,8 +145,10 @@ def main():
     cfg = FalconConfig(task=FalconTask[args.task])
     device = default_device()
 
-    calib = load_sessions(f"{args.data}/*held-in-calib/*.nwb", args.task)
     minival = load_sessions(f"{args.data}/*held-in-minival/*.nwb", args.task)
+    # minival is a byte-identical prefix of calib here; without this the rollout and
+    # sim2real arms are all scored on bins the model trained on.
+    calib = disjoint_calib(load_sessions(f"{args.data}/*held-in-calib/*.nwb", args.task), minival)
     if args.sessions:
         calib, minival = calib[:args.sessions], minival[:args.sessions]
 

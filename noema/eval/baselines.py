@@ -10,18 +10,28 @@ import torch.nn.functional as F
 from .metrics import r2_score
 
 
-def gaussian_smooth(x, sigma):
+def gaussian_smooth(x, sigma, causal=False):
+    """Smooth over time. Centered by default; `causal=True` keeps only the past half.
+
+    A centered kernel mixes bins from the future into every sample — at sigma=8 that is
+    480 ms of lookahead carrying half the kernel mass. That is fine for offline rate
+    estimation, but any figure quoted against a streaming decoder must be causal or it
+    is an acausal upper bound rather than a real-time reference.
+    """
     if sigma <= 0:
         return x
     k = int(sigma * 6) | 1  # odd kernel, +/-3 sigma (keeps ~99.7% of the mass)
-    t = torch.arange(k, dtype=torch.float32) - k // 2
+    half = k // 2
+    t = torch.arange(k, dtype=torch.float32) - half
+    if causal:
+        t = t[:half + 1]  # [-half .. 0]: past and current bins only
     w = torch.exp(-(t ** 2) / (2 * sigma ** 2))
     w = (w / w.sum()).view(1, 1, -1).to(x.dtype)
     trials, steps, units = x.shape
     xp = x.transpose(1, 2).reshape(trials * units, 1, steps)
     # Replicate the trial edges so boundary bins aren't smoothed against zeros;
     # zero-padding depresses the first/last few bins' rates and costs co-bps.
-    xp = F.conv1d(F.pad(xp, (k // 2, k // 2), mode="replicate"), w)
+    xp = F.conv1d(F.pad(xp, (half, 0 if causal else half), mode="replicate"), w)
     return xp.reshape(trials, units, steps).transpose(1, 2)
 
 
