@@ -55,3 +55,6 @@ eval_data_test.h5
 
 # Generated demo asset bundle (rebuild with demo/build.py)
 demo/assets.json
+
+# The interactive demo is kept locally, not published.
+demo/

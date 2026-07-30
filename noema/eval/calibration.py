@@ -2,7 +2,7 @@
 
 Decode accuracy against the amount of calibration data, for a pretrained model
 adapted few-shot versus a model trained from scratch. The gap at small budgets
-is the practical payoff of pretraining for a foundation
+is the practical payoff of pretraining — the headline evidence for a foundation
 model of neural activity.
 """
 

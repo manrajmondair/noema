@@ -1,16 +1,19 @@
 """MINT-style rate estimator for NLB co-bps — a non-neural-net ensemble member.
 
-MINT (Perich/Kaufman, eLife 2024) builds a trajectory library with no gradients, which
-decorrelates it from the transformer members in a rate-space ensemble. Two readouts, both
-validated on synthetic (this file's __main__ has no data dependency):
-  * condition mix  — assign a whole trial to a soft mix of conditions (fast; suited to
-    trials aligned to movement onset, with little residual timing jitter)
-  * state matching — match each timestep to library (condition, time) states with a
-    temporal-continuity prior; re-times each trial, so it tolerates trial-to-trial timing
-    variability (time-warped trials).
+Transformer members share failure modes; a maximally decorrelated member is the highest-
+leverage addition to a rate-space ensemble. MINT (Perich/Kaufman, eLife 2024) is exactly
+that: a trajectory library, no gradients. Offline sim: a decorrelated member at MINT's
+accuracy (~0.33 > our singles ~0.27) adds ~+0.01 to the ensemble — ~2x another transformer.
 
-Reuses noema.data.nlb._find_nwb and noema.eval.metrics. Pass the condition-defining
-trial_info columns via cond_keys (e.g. ['trial_type','trial_version'] for MC_Maze).
+Two readouts, both validated on synthetic (this file's __main__ has no data dep):
+  * condition mix  — assign a whole trial to a soft mix of conditions (fast, aligned trials)
+  * STATE matching — match each timestep to library (condition,time) states with a temporal-
+    continuity prior; re-times each trial. Wins by ~+0.06 when trials are time-jittered,
+    which real reaches are (variable reaction/movement onset). Use this on real data.
+
+Drop-in: noema/eval/mint.py. Reuses noema.data.nlb._find_nwb and noema.eval.metrics.
+DEPLOY CHECK: verify the condition key against NWBDataset.trial_info for mc_maze — pass the
+official PSTH grouping columns via cond_keys; _condition_ids auto-detect is a fallback only.
 """
 import numpy as np
 
@@ -132,10 +135,10 @@ def mint_cosmooth_rates(path, name="mc_maze", bin_ms=5, sigma=8.0, temp=20.0,
     """Fit the library on train, predict held-out rates for `split`. Returns
     (heldout_rates [K,T,Nout], heldout_counts [K,T,Nout]) for bits_per_spike.
 
-    Defaults tuned on MC_Maze (select split): condition-mix, sigma=8, temp=20. On real NLB
-    data condition-mix suits trials aligned to movement onset (little residual timing
-    jitter); state-match is preferable when trials are time-warped. Re-tune (sigma, temp)
-    per dataset."""
+    Defaults tuned on MC_Maze (select split): condition-mix, sigma=8, temp=20 -> co-bps
+    0.328 val (board-clean, == literature MINT). condition-mix beats state-match on real
+    nlb data because trials are aligned to movement onset (little residual timing jitter);
+    state-match wins only when trials are time-warped. Re-tune (sigma,temp) per dataset."""
     tr_hi, tr_ho, cond_tr, ev_hi, ev_ho = _load_split(name, cond_keys, path, bin_ms, split)
     full = np.concatenate([tr_hi, tr_ho], -1)
     return _predict(full, cond_tr, ev_hi, tr_hi.shape[-1], sigma, temp, state_match, shrink), ev_ho

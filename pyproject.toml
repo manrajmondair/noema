@@ -2,8 +2,6 @@
 name = "noema"
 version = "0.0.1"
 description = "A world model for neural population activity"
-readme = "README.md"
-license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = ["torch>=2.2", "numpy"]
 

@@ -55,7 +55,7 @@ def train(model, loader, cfg, device=None, on_log=None, val_ds=None):
     device = device or default_device()
     model.to(device).train()
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    amp = cfg.amp and device.type == "cuda"  # bf16: wide dynamic range, no loss scaler needed
+    amp = cfg.amp and device.type == "cuda"  # bf16 on H200: wide range, no loss scaler
 
     select = val_ds is not None and cfg.eval_every > 0
     best = None

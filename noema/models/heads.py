@@ -7,7 +7,8 @@ class FiLMReadout(nn.Module):
     """Nonlinear per-unit co-smoothing readout. A shared nonlinear feature of the latent z
     is modulated per held-out unit (FiLM, using that unit's readout embedding as the scale),
     then projected to a log-rate. Strictly more expressive than the linear z @ readout dot-
-    product. Held-out only (small unit set), so the [B,T,M,D] modulation stays memory-bounded."""
+    product — attacks the pooled-linear-readout ceiling that caps single models at ~0.333.
+    Held-out only (small unit set), so the [B,T,M,D] modulation stays memory-bounded."""
 
     def __init__(self, dim: int):
         super().__init__()

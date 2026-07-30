@@ -1,8 +1,8 @@
 """Score a submission .h5 against the NLB'21 held-out TEST labels.
 
 The test labels were sequestered on EvalAI; they are now public in the nlb_tools repo
-(`data/eval_data_test.h5`, Git-LFS). This computes the leaderboard-comparable
-co-bps locally, without an EvalAI upload.
+(`data/eval_data_test.h5`, Git-LFS). This computes the real, leaderboard-comparable
+co-bps locally — no EvalAI upload — so v2 members can be measured on the true target.
 """
 import argparse
 import os
