@@ -164,6 +164,9 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--ckpt", default="", help="save the trained weights here, so the model that "
                                               "was measured is the model that ships")
+    p.add_argument("--reproduce-contaminated", action="store_true",
+                   help="train on the un-excised overlap; for checking whether a "
+                        "withdrawn figure reproduces, never for reporting")
     p.add_argument("--train-files", default="", help="comma-separated NWB paths to train on, "
                                                      "instead of every calibration session")
     args = p.parse_args()
@@ -188,6 +191,14 @@ def main():
         named = [s for path in args.train_files.split(",") for s in load_sessions(path, args.task)]
         overlapping = [m for m in minival if m[0] in {n[0] for n in named}]
         calib = disjoint_calib(named, overlapping) if overlapping else named
+    elif args.reproduce_contaminated:
+        # Deliberately trains on the overlap, to test whether a withdrawn figure can be
+        # reproduced at all before it is described as wrong rather than unverified. Named
+        # so it cannot be reached by accident and says what it does at the top of the log.
+        print("WARNING: excision disabled; minival is a prefix of these training "
+              "recordings, so every score below is measured on training data and is "
+              "not a result", flush=True)
+        calib = load_sessions(f"{args.data}/*held-in-calib/*.nwb", args.task)
     else:
         calib = disjoint_calib(load_sessions(f"{args.data}/*held-in-calib/*.nwb", args.task), minival)
     if args.sessions:

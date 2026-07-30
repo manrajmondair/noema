@@ -34,13 +34,18 @@ COMMON=(--data "${DATA:-data/000954}" --task "${TASK:-h1}"
 case "$MODE" in
   heldin)
     # Matches the configuration the withdrawn 0.87 was measured with, so the only
-    # difference is the excision.
+    # difference is the excision. STEPS is load-bearing: differencing a 4000-step run
+    # against a published 6000-step one attributes the training length to the excision.
     python -m noema.eval.falcon_run "${COMMON[@]}" \
-      --enc-depth "${ENC:-5}" --w-behavior "${W_BEHAVIOR:-6}"
+      --enc-depth "${ENC:-5}" --w-behavior "${W_BEHAVIOR:-6}" --seed "${SEED:-0}"
     ;;
   fidelity|sim2real)
+    # W_BEHAVIOR defaults to 5 in the entry point, but the published rollout figures came
+    # from a model with no behavior head at all. Pass 0 to match that objective.
     python -m noema.eval.falcon_worldmodel "${COMMON[@]}" \
       --enc-depth "${ENC:-4}" --wm-depth "${WM:-3}" --seed "${SEED:-0}" \
+      ${W_BEHAVIOR:+--w-behavior "$W_BEHAVIOR"} \
+      ${CONTAMINATED:+--reproduce-contaminated} \
       --ckpt "checkpoints/${SLURM_JOB_NAME:-falcon}-${SLURM_JOB_ID}.pt" \
       "--$MODE" ${HORIZONS:+--horizons "$HORIZONS"} ${STRIDE:+--stride "$STRIDE"}
     ;;
