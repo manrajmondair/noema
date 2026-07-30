@@ -23,7 +23,8 @@ from ..train import TrainConfig, train
 from ..utils import default_device
 from .baselines import ridge_velocity
 from .falcon import disjoint_calib, load_sessions
-from .metrics import population_rate_corr, r2_weighted, weighted_neuron_corr
+from .metrics import (bits_per_spike, population_rate_corr, r2_weighted,
+                      weighted_neuron_corr)
 from .sim2real import imagine_windows
 
 
@@ -106,11 +107,18 @@ def _standard_fidelity(per_session):
     # The seed window's mean, held flat across the horizon — strictly causal. It varies
     # from one forecast point to the next, so unlike within a window it can be scored.
     flat = np.repeat(true.mean(1, keepdims=True), true.shape[1], axis=1)
+    # Forward-prediction bits/spike, the benchmark's own currency for this. Its null IS
+    # the flat per-neuron mean rate, so a constant scores exactly 0 by construction and
+    # a negative value means worse than knowing nothing but each neuron's average.
+    counts = torch.as_tensor(true)
+    fp = np.array([bits_per_spike(torch.as_tensor(pred[:, h]).clamp_min(1e-8),
+                                  counts[:, h]) for h in range(pred.shape[1])])
     return {
         "wt_r": weighted_neuron_corr(pred, true),
         "wt_r_flat": weighted_neuron_corr(flat, true),
         "pop_rate": population_rate_corr(pred, true),
         "pop_rate_flat": population_rate_corr(flat, true),
+        "fp_bps": fp,
     }
 
 
@@ -337,6 +345,9 @@ def main():
                   f"{st['wt_r'][h] - st['wt_r_flat'][h]:>+12.3f}"
                   f"{st['pop_rate'][h]:>11.3f}{st['pop_rate_flat'][h]:>11.3f}", flush=True)
         gap = np.nanmean(st["wt_r"] - st["wt_r_flat"])
+        print(f"    forward bits/spike (null IS the flat mean rate, so 0 = no better "
+              f"than it): h1 {st['fp_bps'][0]:+.4f}  h{len(st['fp_bps'])} "
+              f"{st['fp_bps'][-1]:+.4f}  mean {st['fp_bps'].mean():+.4f}", flush=True)
         print(f"summary: model {np.nanmean(st['wt_r']):.3f}  flat "
               f"{np.nanmean(st['wt_r_flat']):.3f}  over flat {gap:+.3f}", flush=True)
 
