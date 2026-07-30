@@ -60,7 +60,7 @@ def _rollout_fidelity(model, sessions, seed, horizon, device, stride=20):
         t = torch.as_tensor(neural, dtype=torch.float32, device=device)
         # Per session: the profile removed below, and where each window's rows land.
         profile = t.mean(0).cpu().numpy()
-        pred_s, true_s = [], []
+        pred_s, true_s, flat_s = [], [], []
         for s in range(0, len(t) - seed - horizon, stride):
             window = t[s:s + seed]
             rates, _ = imagine(model, window.unsqueeze(0), ids,
@@ -72,13 +72,14 @@ def _rollout_fidelity(model, sessions, seed, horizon, device, stride=20):
             path = rates[0].cpu().numpy()
             pred_s.append(path)
             true_s.append(t[s + seed:s + seed + horizon].cpu().numpy())
+            flat_s.append(np.repeat(flat[None], horizon, 0))
             for h in range(horizon):
                 got["model"][h].append(path[h] - profile)
                 got["seed_mean"][h].append(flat - profile)
                 got["persistence"][h].append(last - profile)
                 truth[h].append(t[s + seed + h].cpu().numpy() - profile)
         if pred_s:
-            per_session.append((np.stack(pred_s), np.stack(true_s)))
+            per_session.append((np.stack(pred_s), np.stack(true_s), np.stack(flat_s)))
 
     out = {a: np.zeros(horizon) for a in spatial_arms}
     for h in range(horizon):
@@ -102,11 +103,12 @@ def _standard_fidelity(per_session):
     the same way and reported beside the model: putting a trivial baseline on the
     horizon curve is the one thing this literature almost never does.
     """
-    pred = np.concatenate([p for p, _ in per_session])
-    true = np.concatenate([t for _, t in per_session])
-    # The seed window's mean, held flat across the horizon — strictly causal. It varies
-    # from one forecast point to the next, so unlike within a window it can be scored.
-    flat = np.repeat(true.mean(1, keepdims=True), true.shape[1], axis=1)
+    pred = np.concatenate([p for p, _, _ in per_session])
+    true = np.concatenate([t for _, t, _ in per_session])
+    # The seed window's mean, held flat across the horizon. Averaging `true` here instead
+    # would take the mean of the very bins being predicted — an oracle, not a forecast,
+    # and it was scoring 0.475 against the model's 0.232 on exactly that advantage.
+    flat = np.concatenate([f for _, _, f in per_session])
     # Forward-prediction bits/spike, the benchmark's own currency for this. Its null IS
     # the flat per-neuron mean rate, so a constant scores exactly 0 by construction and
     # a negative value means worse than knowing nothing but each neuron's average.
@@ -150,7 +152,7 @@ def _temporal_fidelity(per_session, rng=None):
     scores = {k: [] for k in ("model", "shuffled", "mean_path")}
     degenerate = total = 0
 
-    for pred, true in per_session:
+    for pred, true, _ in per_session:
         windows, horizon, channels = pred.shape
         if windows < 2:
             continue

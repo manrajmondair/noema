@@ -86,11 +86,11 @@ def test_temporal_metric_recovers_a_tracked_trajectory():
 
     rng = np.random.default_rng(0)
     true = rng.normal(size=(40, 10, 20))
-    tracked = _temporal_fidelity([(true + 0.4 * rng.normal(size=true.shape), true)])
+    tracked = _temporal_fidelity([(true + 0.4 * rng.normal(size=true.shape), true, true)])
     assert tracked["model"] > 0.8
     assert tracked["model"] - tracked["shuffled"] > 0.5  # the ORDER is what it recovers
 
-    noise = _temporal_fidelity([(rng.normal(size=true.shape), true)])
+    noise = _temporal_fidelity([(rng.normal(size=true.shape), true, true)])
     assert abs(noise["model"]) < 0.05
 
 
@@ -103,4 +103,23 @@ def test_a_flat_forecast_cannot_score_on_the_temporal_metric():
     rng = np.random.default_rng(0)
     true = rng.normal(size=(40, 10, 20))
     flat = np.repeat(true.mean(1, keepdims=True), 10, axis=1)
-    assert np.isnan(_temporal_fidelity([(flat, true)])["model"])
+    assert np.isnan(_temporal_fidelity([(flat, true, flat)])["model"])
+
+
+def test_the_flat_floor_is_causal_not_an_oracle():
+    # The floor the rollout is judged against must be built from the seed window. Taking
+    # the mean of `true` instead averages the very bins being predicted, which scored
+    # 0.475 against the model's 0.232 on that advantage alone and read as a real result.
+    from noema.eval.falcon_worldmodel import _standard_fidelity
+
+    rng = np.random.default_rng(0)
+    true = rng.poisson(2.0, (60, 10, 12)).astype(float)
+    oracle = np.repeat(true.mean(1, keepdims=True), 10, axis=1)
+    causal = rng.poisson(2.0, (60, 1, 12)).astype(float).repeat(10, axis=1)
+
+    scored = _standard_fidelity([(true, true, causal)])
+    assert np.allclose(scored["wt_r_flat"],
+                       _standard_fidelity([(true, true, causal)])["wt_r_flat"])
+    # The floor must reflect the arm it was handed, not a mean of the future.
+    assert not np.allclose(scored["wt_r_flat"],
+                           _standard_fidelity([(true, true, oracle)])["wt_r_flat"])
