@@ -23,7 +23,7 @@ from ..train import TrainConfig, train
 from ..utils import default_device
 from .baselines import ridge_velocity
 from .falcon import disjoint_calib, load_sessions
-from .metrics import r2_weighted
+from .metrics import population_rate_corr, r2_weighted, weighted_neuron_corr
 from .sim2real import imagine_windows
 
 
@@ -88,11 +88,38 @@ def _rollout_fidelity(model, sessions, seed, horizon, device, stride=20):
             out[a][h] = np.nanmean(scores)
     out["dropped"] = dropped
     out["temporal"] = _temporal_fidelity(per_session)
+    out["standard"] = _standard_fidelity(per_session)
     return out
 
 
+def _standard_fidelity(per_session):
+    """The literature's headline forms, with the floor every horizon plot should carry.
+
+    Variance-weighted per-neuron correlation across the recording, and the population
+    rate correlation. Both remove each neuron's own mean by construction, so unlike the
+    cross-neuron form they have no dataset-dependent floor. The flat forecast is scored
+    the same way and reported beside the model: putting a trivial baseline on the
+    horizon curve is the one thing this literature almost never does.
+    """
+    pred = np.concatenate([p for p, _ in per_session])
+    true = np.concatenate([t for _, t in per_session])
+    # The seed window's mean, held flat across the horizon — strictly causal. It varies
+    # from one forecast point to the next, so unlike within a window it can be scored.
+    flat = np.repeat(true.mean(1, keepdims=True), true.shape[1], axis=1)
+    return {
+        "wt_r": weighted_neuron_corr(pred, true),
+        "wt_r_flat": weighted_neuron_corr(flat, true),
+        "pop_rate": population_rate_corr(pred, true),
+        "pop_rate_flat": population_rate_corr(flat, true),
+    }
+
+
 def _temporal_fidelity(per_session, rng=None):
-    """Does each channel's predicted TIME COURSE track its recorded one?
+    """Does each channel's predicted TIME COURSE track its recorded one, within a window?
+
+    Kept as a diagnostic, not a headline. Correlating over the ten bins inside a single
+    window is noisy — a third of channel-windows are silent throughout — and it is not
+    the form the literature reports. `_standard_fidelity` is.
 
     The table above asks a different question — given this moment, which channels are
     hot — and a forecast holding the seed window's average flat answers it well, because
@@ -299,7 +326,21 @@ def main():
         if fid["dropped"]:
             print(f"  ({fid['dropped']} degenerate windows dropped)", flush=True)
 
-        # The other question: not which channels are hot, but how each one evolves.
+        # The literature's headline form, and the floor that belongs beside it.
+        st = fid["standard"]
+        print("per-neuron correlation across the recording, variance-weighted "
+              "(the reported form):", flush=True)
+        print(f"{'':4}{'h':>3}{'model':>10}{'flat forecast':>16}{'over flat':>12}"
+              f"{'pop rate':>11}{'pop flat':>11}", flush=True)
+        for h in range(len(st["wt_r"])):
+            print(f"{'':4}{h + 1:>3}{st['wt_r'][h]:>10.3f}{st['wt_r_flat'][h]:>16.3f}"
+                  f"{st['wt_r'][h] - st['wt_r_flat'][h]:>+12.3f}"
+                  f"{st['pop_rate'][h]:>11.3f}{st['pop_rate_flat'][h]:>11.3f}", flush=True)
+        gap = np.nanmean(st["wt_r"] - st["wt_r_flat"])
+        print(f"summary: model {np.nanmean(st['wt_r']):.3f}  flat "
+              f"{np.nanmean(st['wt_r_flat']):.3f}  over flat {gap:+.3f}", flush=True)
+
+        # A diagnostic, not a headline: within one window the series is ten bins long.
         tf = fid["temporal"]
         print("per-channel correlation along time (a flat forecast cannot score here):",
               flush=True)

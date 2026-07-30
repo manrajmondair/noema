@@ -1,6 +1,8 @@
-"""Neural Latents Benchmark scoring."""
+"""Neural Latents Benchmark scoring, and the forward-prediction metrics."""
 
 import math
+
+import numpy as np
 
 
 
@@ -42,3 +44,48 @@ def r2_weighted(pred, target):
     res = ((target - pred) ** 2).sum(0)
     tot = ((target - target.mean(0)) ** 2).sum(0)
     return (1 - res.sum() / tot.sum().clamp_min(1e-8)).item()
+
+
+def weighted_neuron_corr(pred, true):
+    """Variance-weighted per-neuron Pearson across the recording, at each horizon.
+
+    The forward-prediction literature's headline form (Minnick et al. 2026, "Wt-r").
+    For each neuron it correlates the forecast time series against the recorded one
+    across all forecast points, then averages over neurons weighted by how much that
+    neuron actually varies — so silent channels cannot dominate.
+
+    This replaces a cross-neuron correlation taken within a single time bin, which we
+    had been reporting. That form has a floor set by the recording rather than by the
+    model: for Poisson counts with per-channel rates lambda, a flat forecast scores
+    sqrt(Var(lambda) / (Var(lambda) + E[lambda])) — 0.02 on one dataset and 0.93 on
+    another, with no model involved. It cannot be a headline.
+
+    `pred` and `true` are [points, horizon, neurons].
+    """
+    out = np.full(pred.shape[1], np.nan)
+    for h in range(pred.shape[1]):
+        p, t = pred[:, h], true[:, h]
+        weight = t.var(0)
+        r = np.full(t.shape[1], np.nan)
+        for c in range(t.shape[1]):
+            if p[:, c].std() > 1e-9 and t[:, c].std() > 1e-9:
+                r[c] = np.corrcoef(p[:, c], t[:, c])[0, 1]
+        ok = np.isfinite(r) & (weight > 0)
+        if ok.any():
+            out[h] = float(np.average(r[ok], weights=weight[ok]))
+    return out
+
+
+def population_rate_corr(pred, true):
+    """Correlation of the summed population rate over time, per horizon.
+
+    Structurally immune to the static-profile floor for the same reason: summing over
+    neurons first leaves one time series per horizon, so a per-neuron mean contributes
+    a constant offset that correlation removes.
+    """
+    out = np.full(pred.shape[1], np.nan)
+    for h in range(pred.shape[1]):
+        p, t = pred[:, h].sum(1), true[:, h].sum(1)
+        if p.std() > 1e-9 and t.std() > 1e-9:
+            out[h] = float(np.corrcoef(p, t)[0, 1])
+    return out
