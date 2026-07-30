@@ -33,7 +33,11 @@ def main():
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--w-behavior", type=float, default=5.0)
     p.add_argument("--multistep", type=int, default=0, help=">1 adds a multi-step world-model rollout loss")
+    # Without this every figure from here was a single draw from an uncontrolled
+    # initialisation, so two runs could not be differenced and no spread was knowable.
+    p.add_argument("--seed", type=int, default=0)
     args = p.parse_args()
+    torch.manual_seed(args.seed)
 
     from falcon_challenge.config import FalconConfig, FalconTask
     from falcon_challenge.evaluator import FalconEvaluator

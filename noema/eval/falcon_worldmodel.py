@@ -33,29 +33,54 @@ def _corr(a, b):
 
 @torch.no_grad()
 def _rollout_fidelity(model, sessions, seed, horizon, device, stride=20):
-    """Imagined-vs-true firing correlation per horizon, raw and mean-centred.
+    """Imagined-vs-true population-pattern correlation per horizon, against two floors.
 
-    Raw correlation across channels is dominated by the static per-channel mean rate,
-    so a rollout that collapses toward a rescaled population average still scores well.
-    Centring removes that profile, leaving only credit for time-varying structure.
+    Each score correlates a predicted population vector with the true one WITHIN a time
+    bin, averaged over windows. Raw correlation is dominated by the static per-channel
+    mean rate, so a rollout collapsing toward a rescaled population average still scores
+    well — a channel-mean baseline reaches about 0.59.
+
+    Centring removes a per-channel profile, but WHICH profile decides what the number
+    means. Pooling every session and removing one grand profile leaves each session's
+    own level intact, and that difference alone then reads as predicted structure: a
+    constant per-session profile scored that way reaches 0.24, matching what the model
+    was credited with. So the profile is removed per session, and the two constant
+    predictors that ought to score nothing are reported beside the model rather than
+    left to be assumed away.
     """
     ids = torch.arange(sessions[0][1].shape[1], device=device)
-    pred, true = [[] for _ in range(horizon)], [[] for _ in range(horizon)]
+    arms = ("model", "seed_mean", "persistence")
+    got = {a: [[] for _ in range(horizon)] for a in arms}
+    truth = [[] for _ in range(horizon)]
+    dropped = 0
+
     for _, neural, _, _ in sessions:
         t = torch.as_tensor(neural, dtype=torch.float32, device=device)
+        # Per session: the profile removed below, and where each window's rows land.
+        profile = t.mean(0).cpu().numpy()
         for s in range(0, len(t) - seed - horizon, stride):
-            rates, _ = imagine(model, t[s:s + seed].unsqueeze(0), ids,
+            window = t[s:s + seed]
+            rates, _ = imagine(model, window.unsqueeze(0), ids,
                                torch.zeros(1, horizon, 0, device=device))
+            # Two predictors with no time-varying content, both strictly causal: the
+            # mean of the seed window, and its last bin repeated.
+            flat = window.mean(0).cpu().numpy()
+            last = window[-1].cpu().numpy()
             for h in range(horizon):
-                pred[h].append(rates[0, h].cpu().numpy())
-                true[h].append(t[s + seed + h].cpu().numpy())
-    raw, centred = np.zeros(horizon), np.zeros(horizon)
+                got["model"][h].append(rates[0, h].cpu().numpy() - profile)
+                got["seed_mean"][h].append(flat - profile)
+                got["persistence"][h].append(last - profile)
+                truth[h].append(t[s + seed + h].cpu().numpy() - profile)
+
+    out = {a: np.zeros(horizon) for a in arms}
     for h in range(horizon):
-        p, q = np.stack(pred[h]), np.stack(true[h])
-        raw[h] = np.nanmean([_corr(a, b) for a, b in zip(p, q)])
-        p, q = p - p.mean(0), q - q.mean(0)
-        centred[h] = np.nanmean([_corr(a, b) for a, b in zip(p, q)])
-    return raw, centred
+        q = np.stack(truth[h])
+        for a in arms:
+            scores = [_corr(x, y) for x, y in zip(np.stack(got[a][h]), q)]
+            dropped += int(np.isnan(scores).sum()) if a == "model" else 0
+            out[a][h] = np.nanmean(scores)
+    out["dropped"] = dropped
+    return out
 
 
 def _windows(neural, kin, mask, window, horizon, stride):
@@ -156,7 +181,13 @@ def main():
         # An explicit file list, so a caller that also ships recordings can hold some
         # back. Naming the training set in one place is what keeps a held-out recording
         # from quietly being one the model read.
-        calib = [s for path in args.train_files.split(",") for s in load_sessions(path, args.task)]
+        #
+        # The excision applies here too. This branch used to skip it while still scoring
+        # on minival, and the recordings the demo trained on were the full calib files —
+        # so roughly 45% of the evaluation windows came from bins the model had read.
+        named = [s for path in args.train_files.split(",") for s in load_sessions(path, args.task)]
+        overlapping = [m for m in minival if m[0] in {n[0] for n in named}]
+        calib = disjoint_calib(named, overlapping) if overlapping else named
     else:
         calib = disjoint_calib(load_sessions(f"{args.data}/*held-in-calib/*.nwb", args.task), minival)
     if args.sessions:
@@ -184,12 +215,22 @@ def main():
         print(f"saved {args.ckpt}", flush=True)
 
     if args.fidelity or not args.sim2real:
-        raw, centred = _rollout_fidelity(model, minival, args.window, args.horizon, device)
-        print("rollout firing-correlation vs horizon (bins):", flush=True)
-        for h, (r, c) in enumerate(zip(raw, centred), 1):
-            print(f"  h={h:2d}  corr={r:.3f}  centred={c:.3f}", flush=True)
-        print(f"summary: h1={raw[0]:.3f}  h{len(raw)}={raw[-1]:.3f}  mean={raw.mean():.3f}  "
-              f"| centred mean={centred.mean():.3f}", flush=True)
+        fid = _rollout_fidelity(model, minival, args.window, args.horizon, device)
+        m, sm, pers = fid["model"], fid["seed_mean"], fid["persistence"]
+        print("rollout population correlation vs horizon, per-session profile removed:",
+              flush=True)
+        print(f"{'':4}{'h':>3}{'model':>10}{'seed-mean':>12}{'persistence':>14}"
+              f"{'over best floor':>18}", flush=True)
+        for h in range(len(m)):
+            floor = max(sm[h], pers[h])
+            print(f"{'':4}{h + 1:>3}{m[h]:>10.3f}{sm[h]:>12.3f}{pers[h]:>14.3f}"
+                  f"{m[h] - floor:>+18.3f}", flush=True)
+        best = np.maximum(sm, pers)
+        print(f"summary: model h1={m[0]:.3f} h{len(m)}={m[-1]:.3f} mean={m.mean():.3f}  |  "
+              f"best constant floor mean={best.mean():.3f}  |  "
+              f"model over floor mean={(m - best).mean():+.3f}", flush=True)
+        if fid["dropped"]:
+            print(f"  ({fid['dropped']} degenerate windows dropped)", flush=True)
 
     if args.sim2real:
         ids = torch.arange(cfg.n_channels)
