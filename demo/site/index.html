@@ -62,20 +62,22 @@
         176 channels, spanning thirty-nine days. Put a mark anywhere on a recording and it
         commits a forecast of the next 200 ms. The forecast is held alone, and then the
         recording arrives to check it. Nothing is selected for you and nothing is smoothed
-        after the fact.
+        after the fact — including the finding that the forecast does not beat a flat one.
       </p>
 
       <div class="ledger-flat" aria-label="Forecast skill, mean across thirteen recordings">
         <div class="lrow">
           <span>Correlation at 20 ms, per-channel mean removed</span>
           <b>0.118</b>
-          <small>The headline. Roughly four times what repeating the last bin achieves.</small>
+          <small>Against 0.121 for a forecast that averages the seed window and holds it
+            flat, using only the past and containing nothing time-varying. The model does
+            not beat that floor at any horizon.</small>
         </div>
         <div class="lrow">
           <span>Correlation at 200 ms, per-channel mean removed</span>
           <b>0.051</b>
-          <small>Fifty-seven per cent of the skill is gone by the tenth step, and repeating
-            the last bin has caught up.</small>
+          <small>Fifty-seven per cent of the skill is gone by the tenth step, where the
+            flat forecast still scores 0.080.</small>
         </div>
         <div class="lrow">
           <span>Same forecast, mean left in</span>

@@ -171,8 +171,10 @@ footer a{color:var(--ink-3)}
       <h1>A forecast of 176 channels in a human motor cortex, and how fast it runs out.</h1>
       <p class="deck">The model commits a forecast for all 176 channels before the recording
       arrives to check it. Across thirteen recordings it reaches a centred population
-      correlation near a tenth at one step and half that by ten — well above chance, and far
-      from reproducing the population. Beside the forecast is what the cortex actually did,
+      correlation of 0.12 at one step, falling to 0.05 by ten. Averaging the seed window
+      and holding it flat — a forecast with no time-varying content at all — scores 0.12
+      and 0.08. So this model does not beat a constant, and the honest subject of the page
+      is how far short of one it falls. Beside the forecast is what the cortex actually did,
       and the difference between them.</p>
     </header>
 
@@ -200,12 +202,14 @@ footer a{color:var(--ink-3)}
     <section>
       <div class="mark"><span>1</span> Skill against horizon</div>
       <p class="lede">Correlation between forecast and recording across all 176 channels,
-      at each step ahead. The centred line is the one that counts: raw correlation is
-      dominated by how much each channel fires on average, so a forecast reproducing only
-      the average firing profile still scores about 0.5. The dotted line is exactly that
-      forecast, and on the raw metric it beats this model on twelve of the thirteen
-      recordings. The dashed line is the forecast that nothing changes at all: the model
-      clears it fourfold at one step and meets it again by the third.</p>
+      at each step ahead, with each channel's average firing removed — raw correlation is
+      dominated by that average, so a forecast reproducing only the average profile still
+      scores about 0.5, and on the raw metric it beats this model on twelve of the thirteen
+      recordings. Two forecasts containing nothing time-varying are drawn beside the model,
+      both using only the past: repeating the last bin, and holding the seed window's
+      average flat. The second is the one that matters, and the model does not beat it at
+      any horizon. Repeating the last bin is the weaker comparison, and comparing against
+      it alone is how this page previously claimed a result it does not have.</p>
       <p><button class="toggle" id="t-multistep" aria-pressed="true">rollout objective</button
         ><button class="toggle" id="t-onestep" aria-pressed="false">one-step objective</button></p>
       <canvas id="plot" role="img" aria-label="Forecast skill against horizon"></canvas>
@@ -371,7 +375,8 @@ function plot(){
   const series=[
     ['centred', d[active].centred, css('--ink-1'), 2, []],
     ['not centred', d[active].raw, css('--ink-3'), 1, []],
-    ['persistence', d[active].persistence, css('--ink-2'), 1, [4,3]],
+    ['seed mean held flat', d[active].seed_mean, css('--ink-2'), 2, [7,4]],
+    ['last bin repeated', d[active].persistence, css('--ink-3'), 1, [4,3]],
     ['channel mean', d[active].channel_mean, css('--ink-4'), 1, [1,3]],
   ];
   for (const [lab,vals,col,lw,dash] of series){
@@ -406,9 +411,11 @@ function ledger(){
     ['Forecast skill, ten steps ahead', mean(d,'multistep',H-1).toFixed(3),
      'Under half the one-step figure: skill decays across the horizon. The rollout objective retains more than the one-step '
      +'objective, which reaches '+mean(d,'onestep',H-1).toFixed(3)+' here, and the two are indistinguishable at one step.'],
-    ['Advantage over repeating the last bin', mean(d,'multistep',0).toFixed(2)+' against '+met(d,'multistep','persistence',0).toFixed(2),
-     'At one step the forecast is four times the do-nothing baseline. Beyond two steps the two are level, and on the seven '
-     +'days the models never read, repeating the last bin is ahead more often than not.'],
+    ['Against a forecast with no dynamics', mean(d,'multistep',0).toFixed(3)+' against '+met(d,'multistep','seed_mean',0).toFixed(3),
+     'Averaging the seed window and holding it flat uses only the past and contains nothing time-varying, and the model does '
+     +'not beat it at any horizon. Against the weaker do-nothing forecast — repeating the last bin, '
+     +met(d,'multistep','persistence',0).toFixed(3)+' — the model looks four times better at one step. Comparing only against '
+     +'that weaker floor is how this page previously reported a result it does not have.'],
     ['Skill lost across 39 days', (100*(1-mean(ho,'multistep',0)/mean(hi,'multistep',0))).toFixed(0)+'%',
      'Held-in days against held-out days, same protocol on both. This is drift, not a benchmark score.'],
   ];

@@ -37,7 +37,14 @@ def _corr(a, b):
 def forecast_skill(model, neural, window, horizon, count=100, device=None):
     """Per-horizon skill of the model's open-loop rollout against what was recorded.
 
-    Returns a dict of length-`horizon` arrays: centred, raw, persistence, channel_mean.
+    Returns a dict of length-`horizon` arrays: centred, raw, persistence, seed_mean,
+    channel_mean.
+
+    `seed_mean` is the floor that matters and the one this was missing. Repeating the
+    last bin is a weak comparison because a single 20 ms bin is mostly noise; averaging
+    the whole seed window and holding it flat across the horizon is still strictly causal,
+    still contains nothing time-varying, and is far harder to beat. On FALCON it beats
+    the world model at every horizon.
     """
     device = device or next(model.parameters()).device
     model.eval()
@@ -48,22 +55,28 @@ def forecast_skill(model, neural, window, horizon, count=100, device=None):
     pred = [[] for _ in range(horizon)]
     true = [[] for _ in range(horizon)]
     last = [[] for _ in range(horizon)]
+    flat = [[] for _ in range(horizon)]
     for cut in cuts:
         seed = tape[cut - window:cut].unsqueeze(0)
         rates, _ = imagine(model, seed, ids, torch.zeros(1, horizon, 0, device=device))
+        window_mean = tape[cut - window:cut].mean(0).cpu().numpy()
         for h in range(horizon):
             pred[h].append(rates[0, h].cpu().numpy())
             true[h].append(tape[cut + h].cpu().numpy())
             last[h].append(tape[cut - 1].cpu().numpy())  # persistence: repeat the last bin seen
+            flat[h].append(window_mean)                  # seed mean, held flat across the horizon
 
-    out = {k: np.full(horizon, np.nan) for k in ("centred", "raw", "persistence", "channel_mean")}
+    out = {k: np.full(horizon, np.nan)
+           for k in ("centred", "raw", "persistence", "seed_mean", "channel_mean")}
     for h in range(horizon):
         p, t, prev = np.stack(pred[h]), np.stack(true[h]), np.stack(last[h])
+        avg = np.stack(flat[h])
         profile = t.mean(0)  # the static per-channel firing profile, across cuts
         out["raw"][h] = np.nanmean([_corr(a, b) for a, b in zip(p, t)])
         pc, tc = p - p.mean(0), t - t.mean(0)
         out["centred"][h] = np.nanmean([_corr(a, b) for a, b in zip(pc, tc)])
         out["persistence"][h] = np.nanmean([_corr(a, b) for a, b in zip(prev - prev.mean(0), tc)])
+        out["seed_mean"][h] = np.nanmean([_corr(a, b) for a, b in zip(avg - avg.mean(0), tc)])
         # The channel-mean baseline is constant across cuts, so it has no centred
         # variation at all. Reporting it raw is the point: it is the score a model
         # gets for learning nothing but the average firing rate of each channel.

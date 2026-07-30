@@ -95,6 +95,18 @@ def test_the_quoted_forecast_numbers_match_the_shipped_data(page):
     for quoted, value in [("0.118", mean("multistep", "centred", 0)),
                           ("0.051", mean("multistep", "centred", 9)),
                           ("0.429", mean("multistep", "raw", 0)),
-                          ("0.494", mean("multistep", "channel_mean", 0))]:
+                          ("0.494", mean("multistep", "channel_mean", 0)),
+                          # The floor the model fails to clear. Quoting the model without
+                          # it is what made this page overclaim in the first place.
+                          ("0.121", mean("multistep", "seed_mean", 0)),
+                          ("0.080", mean("multistep", "seed_mean", 9))]:
         assert quoted in page, f"{quoted} is no longer quoted on the page"
         assert f"{value:.3f}" == quoted, f"page says {quoted}, data says {value:.3f}"
+
+
+def test_the_site_does_not_claim_the_model_beats_the_floor(page):
+    # Measured: the model is below a flat causal forecast at every horizon. The page used
+    # to say "roughly four times what repeating the last bin achieves", comparing only
+    # against the weaker of the two floors.
+    assert "does not beat" in page
+    assert "four times" not in page

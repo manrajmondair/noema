@@ -87,7 +87,16 @@ def test_the_centred_metric_is_the_one_explained(page):
     # Raw correlation is roughly twice centred on this data. Which one leads is the
     # page's central honesty decision, so it must be stated, not just plotted.
     assert "centred" in page
-    assert "average firing profile" in page or "fires on average" in page
+    assert "average profile" in page or "average firing" in page
+
+
+def test_the_page_states_it_does_not_beat_a_constant(page):
+    # The model is below a flat, strictly causal forecast at every horizon. The page once
+    # compared only against repeating the last bin — the weaker of the two floors — and
+    # reported a fourfold advantage on that basis. Both floors must be drawn, and the
+    # shortfall must be in the prose rather than left for a reader to infer from the plot.
+    assert "seed_mean" in page and "seed mean held flat" in page
+    assert "does not beat" in page
 
 
 def test_canvas_heights_are_multiples_of_the_channel_count(page):

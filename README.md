@@ -34,11 +34,32 @@ FALCON H1 cross-session zero-shot velocity R² is **~0.6**: train on ten held-in
 unseen sessions from the same subject on different recording days. The splits are session-disjoint,
 so this measures the electrode drift that the benchmark exists to test.
 
-Held-in and world-model rollout figures are **withdrawn pending re-measurement**. In this dandiset
-each `held-in-minival` recording is a byte-identical prefix of the matching `held-in-calib`
-recording, so any run that fits on calibration and scores minival is scoring its own training data.
-`disjoint_calib` in [`noema/eval/falcon.py`](noema/eval/falcon.py) now excises the overlap, and
-`gaussian_smooth` grew a `causal` flag — a centered kernel reads ~480 ms of future into every
+Held-in velocity R² on the local minival split, re-measured with the overlap excised, is
+**0.545 ± 0.006** (window 50 / enc 4) and **0.603 ± 0.003** (window 75 / enc 5), three seeds each,
+scored by the official `FalconEvaluator`. The figures previously reported for these configurations
+were 0.768 and 0.871: in this dandiset each `held-in-minival` recording is a byte-identical prefix
+of the matching `held-in-calib` recording, so a run that fits on calibration and scores minival is
+scoring its own training data. `disjoint_calib` in [`noema/eval/falcon.py`](noema/eval/falcon.py)
+excises it. The cost was not uniform — 0.22 at the weaker configuration and 0.27 at the stronger —
+and the longer-window advantage halves once it is removed, from +0.10 to +0.06.
+
+These are a dev split, not the leaderboard: minival is public and was the split the configuration
+sweep selected on, so the numbers carry adaptive optimism on top of everything above. The
+leaderboard figure needs an EvalAI submission against sequestered held-out labels. The ± is
+dispersion across the 13 minival sessions.
+
+**The world-model rollout figures are retired, not corrected.** Reported as raw population
+correlation ~0.48 decaying to 0.21, or holding flat at 0.45 under the multi-step objective, they
+measured the static per-channel firing profile rather than prediction — a forecast emitting nothing
+but each channel's average scores ~0.5 on that metric. Re-measured with the profile removed per
+session and the published objective restored (no behavior head), the rollout reaches 0.12 at one
+step and 0.06 by ten, against **0.14 and 0.10 for a strictly causal forecast that averages the seed
+window and holds it flat**. The model does not beat that floor at any horizon, under either
+objective. Training on the overlap changes this by less than seed noise, so contamination was never
+what inflated these figures — the metric was. The multi-step objective is still worth ~0.07 mean
+correlation over the one-step objective; it closes part of the gap to a constant without reaching it.
+
+`gaussian_smooth` also grew a `causal` flag — a centered kernel reads ~480 ms of future into every
 feature, which flatters an offline baseline against a streaming decoder. Under the corrected
 protocol the classical Wiener-filter reference is R² 0.31, down from 0.54 measured the old way.
 Cross-session and NLB results are unaffected: neither touches minival.
