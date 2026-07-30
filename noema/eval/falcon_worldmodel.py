@@ -49,15 +49,17 @@ def _rollout_fidelity(model, sessions, seed, horizon, device, stride=20):
     left to be assumed away.
     """
     ids = torch.arange(sessions[0][1].shape[1], device=device)
-    arms = ("model", "seed_mean", "persistence")
-    got = {a: [[] for _ in range(horizon)] for a in arms}
+    spatial_arms = ("model", "seed_mean", "persistence")
+    got = {a: [[] for _ in range(horizon)] for a in spatial_arms}
     truth = [[] for _ in range(horizon)]
+    per_session = []
     dropped = 0
 
     for _, neural, _, _ in sessions:
         t = torch.as_tensor(neural, dtype=torch.float32, device=device)
         # Per session: the profile removed below, and where each window's rows land.
         profile = t.mean(0).cpu().numpy()
+        pred_s, true_s = [], []
         for s in range(0, len(t) - seed - horizon, stride):
             window = t[s:s + seed]
             rates, _ = imagine(model, window.unsqueeze(0), ids,
@@ -66,20 +68,74 @@ def _rollout_fidelity(model, sessions, seed, horizon, device, stride=20):
             # mean of the seed window, and its last bin repeated.
             flat = window.mean(0).cpu().numpy()
             last = window[-1].cpu().numpy()
+            path = rates[0].cpu().numpy()
+            pred_s.append(path)
+            true_s.append(t[s + seed:s + seed + horizon].cpu().numpy())
             for h in range(horizon):
-                got["model"][h].append(rates[0, h].cpu().numpy() - profile)
+                got["model"][h].append(path[h] - profile)
                 got["seed_mean"][h].append(flat - profile)
                 got["persistence"][h].append(last - profile)
                 truth[h].append(t[s + seed + h].cpu().numpy() - profile)
+        if pred_s:
+            per_session.append((np.stack(pred_s), np.stack(true_s)))
 
-    out = {a: np.zeros(horizon) for a in arms}
+    out = {a: np.zeros(horizon) for a in spatial_arms}
     for h in range(horizon):
         q = np.stack(truth[h])
-        for a in arms:
+        for a in spatial_arms:
             scores = [_corr(x, y) for x, y in zip(np.stack(got[a][h]), q)]
             dropped += int(np.isnan(scores).sum()) if a == "model" else 0
             out[a][h] = np.nanmean(scores)
     out["dropped"] = dropped
+    out["temporal"] = _temporal_fidelity(per_session)
+    return out
+
+
+def _temporal_fidelity(per_session, rng=None):
+    """Does each channel's predicted TIME COURSE track its recorded one?
+
+    The table above asks a different question — given this moment, which channels are
+    hot — and a forecast holding the seed window's average flat answers it well, because
+    population state is strongly autocorrelated. That says nothing about whether the
+    model knows how activity EVOLVES, which is what a forward model is for.
+
+    Correlating along time per channel asks that instead, and no flat predictor can
+    answer it: a constant has no time variance, so its correlation is undefined rather
+    than merely poor. The floors therefore have to vary in time without knowing anything
+    about the specific window:
+
+      shuffled     the model's own trajectory with the horizon order permuted, so only
+                   the ORDER is destroyed. Fair, uses no held-out information.
+      mean path    what activity does after a cut on average, leave-one-window-out so a
+                   window never contributes to the trajectory it is scored against. It
+                   still sees the evaluation set's average shape, which makes it a
+                   harder floor than a model deployed online would face — deliberately.
+    """
+    rng = rng or np.random.default_rng(0)
+    scores = {k: [] for k in ("model", "shuffled", "mean_path")}
+    degenerate = total = 0
+
+    for pred, true in per_session:
+        windows, horizon, channels = pred.shape
+        if windows < 2:
+            continue
+        # Leave-one-out mean trajectory: (sum - self) / (n - 1).
+        loo = (true.sum(0, keepdims=True) - true) / (windows - 1)
+        order = rng.permutation(horizon)
+        arms = {"model": pred, "shuffled": pred[:, order], "mean_path": loo}
+        for w in range(windows):
+            for c in range(channels):
+                total += 1
+                y = true[w, :, c]
+                if y.std() < 1e-9:  # a channel silent over the whole horizon
+                    degenerate += 1
+                    continue
+                for name, arm in arms.items():
+                    scores[name].append(_corr(arm[w, :, c], y))
+
+    out = {k: float(np.nanmean(v)) if v else float("nan") for k, v in scores.items()}
+    out["median"] = float(np.nanmedian(scores["model"])) if scores["model"] else float("nan")
+    out["degenerate_frac"] = degenerate / max(total, 1)
     return out
 
 
@@ -242,6 +298,18 @@ def main():
               f"model over floor mean={(m - best).mean():+.3f}", flush=True)
         if fid["dropped"]:
             print(f"  ({fid['dropped']} degenerate windows dropped)", flush=True)
+
+        # The other question: not which channels are hot, but how each one evolves.
+        tf = fid["temporal"]
+        print("per-channel correlation along time (a flat forecast cannot score here):",
+              flush=True)
+        print(f"    model {tf['model']:+.3f} (median {tf['median']:+.3f})   "
+              f"time-order shuffled {tf['shuffled']:+.3f}   "
+              f"mean path (leave-one-out) {tf['mean_path']:+.3f}   "
+              f"| model over shuffled {tf['model'] - tf['shuffled']:+.3f}"
+              f"  over mean path {tf['model'] - tf['mean_path']:+.3f}", flush=True)
+        print(f"    ({100 * tf['degenerate_frac']:.0f}% of channel-windows silent "
+              "across the horizon and dropped)", flush=True)
 
     if args.sim2real:
         ids = torch.arange(cfg.n_channels)

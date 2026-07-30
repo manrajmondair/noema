@@ -77,3 +77,30 @@ def test_decoder_satisfies_falcon_interface():
     for _ in range(20):  # stream single-timestep spike bins as the evaluator does
         out = decoder.predict(np.random.poisson(1.0, (1, cfg.n_channels)).astype("float32"))
         assert out.shape == (1, cfg.out_dim) and np.isfinite(out).all()
+
+
+def test_temporal_metric_recovers_a_tracked_trajectory():
+    # A null result is only worth reporting from an instrument that can return a
+    # positive one, so plant a model that genuinely follows each channel's time course.
+    from noema.eval.falcon_worldmodel import _temporal_fidelity
+
+    rng = np.random.default_rng(0)
+    true = rng.normal(size=(40, 10, 20))
+    tracked = _temporal_fidelity([(true + 0.4 * rng.normal(size=true.shape), true)])
+    assert tracked["model"] > 0.8
+    assert tracked["model"] - tracked["shuffled"] > 0.5  # the ORDER is what it recovers
+
+    noise = _temporal_fidelity([(rng.normal(size=true.shape), true)])
+    assert abs(noise["model"]) < 0.05
+
+
+def test_a_flat_forecast_cannot_score_on_the_temporal_metric():
+    # This is the whole reason the metric exists. The population metric is beaten by a
+    # constant; a constant has no time variance, so here it is undefined rather than
+    # merely poor, and the two metrics are therefore asking different questions.
+    from noema.eval.falcon_worldmodel import _temporal_fidelity
+
+    rng = np.random.default_rng(0)
+    true = rng.normal(size=(40, 10, 20))
+    flat = np.repeat(true.mean(1, keepdims=True), 10, axis=1)
+    assert np.isnan(_temporal_fidelity([(flat, true)])["model"])
