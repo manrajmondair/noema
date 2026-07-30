@@ -118,12 +118,16 @@ def main():
         # Linking drops an OIDC token here, and unlike .vercel/ this one would upload.
         for leaked in out.glob(".env*.local"):
             leaked.unlink()
-        # The deployment URL is the only thing the CLI writes to stdout. `alias set`
-        # cannot infer it, so name the deployment explicitly rather than letting it
-        # guess and fail after the upload has already happened.
+        # `alias set` cannot infer which deployment it just made, so it has to be named
+        # or it fails after the upload has already succeeded. Match the URL rather than
+        # taking the last line of stdout — the CLI also prints JSON there, and the last
+        # line was a lone closing brace.
         done = subprocess.run([*vercel, "deploy", "--prod", "--yes"],
                               cwd=out, check=True, capture_output=True, text=True)
-        url = done.stdout.strip().splitlines()[-1]
+        urls = re.findall(r"https://\S+\.vercel\.app", done.stdout)
+        if not urls:
+            sys.exit(f"deployed, but no URL found to alias:\n{done.stdout[-2000:]}")
+        url = urls[-1]
         subprocess.run([*vercel, "alias", "set", url, ALIAS], cwd=out, check=True)
         print(f"{ALIAS} -> {url}")
 
