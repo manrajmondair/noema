@@ -48,16 +48,32 @@ sweep selected on, so the numbers carry adaptive optimism on top of everything a
 leaderboard figure needs an EvalAI submission against sequestered held-out labels. The ± is
 dispersion across the 13 minival sessions.
 
-**The world-model rollout figures are retired, not corrected.** Reported as raw population
-correlation ~0.48 decaying to 0.21, or holding flat at 0.45 under the multi-step objective, they
-measured the static per-channel firing profile rather than prediction — a forecast emitting nothing
-but each channel's average scores ~0.5 on that metric. Re-measured with the profile removed per
-session and the published objective restored (no behavior head), the rollout reaches 0.12 at one
-step and 0.06 by ten, against **0.14 and 0.10 for a strictly causal forecast that averages the seed
-window and holds it flat**. The model does not beat that floor at any horizon, under either
-objective. Training on the overlap changes this by less than seed noise, so contamination was never
-what inflated these figures — the metric was. The multi-step objective is still worth ~0.07 mean
-correlation over the one-step objective; it closes part of the gap to a constant without reaching it.
+**The world-model rollout figures are retired, and the forward-prediction claim with them.**
+They were reported as raw cross-neuron correlation — correlating the predicted population vector
+against the recorded one within a time bin. That estimator has a floor set by the recording rather
+than by the model: for Poisson counts with per-channel rates λ, a flat forecast scores
+√(Var(λ)/(Var(λ)+E[λ])), which is 0.47 on this data and ranges from 0.02 to 0.93 across datasets
+with no model involved. It cannot be a headline, so it is no longer one.
+
+Measured four ways, with the published objective restored (no behavior head) and a strictly causal
+flat forecast — the seed window's mean, held constant across the horizon — scored identically:
+
+| | model | flat forecast |
+|---|---|---|
+| cross-neuron within a bin, profile removed per session | 0.084 | **0.121** |
+| per-neuron across the recording, variance-weighted | 0.232 | **0.475** |
+| population rate correlation | 0.43 | **0.66** |
+| forward bits/spike | **−0.17** | 0 by construction |
+
+The flat forecast wins on all three correlation forms at every horizon. The fourth is the decisive
+one: `fp-bps` takes the per-neuron mean rate as its null, so a constant scores exactly zero and a
+negative value means the rollout is *worse than knowing nothing but each neuron's average firing
+rate*. Ours is negative at every horizon, against 0.21–0.27 on the NLB leaderboard. There is no
+baseline choice left to argue about.
+
+Contamination was not the cause — training on the un-excised overlap moves these by less than seed
+noise. The metric was. The multi-step objective is a real relative effect (0.232 against 0.053 for
+one-step on the weighted form) and it closes part of the distance to a constant without reaching it.
 
 `gaussian_smooth` also grew a `causal` flag — a centered kernel reads ~480 ms of future into every
 feature, which flatters an offline baseline against a streaming decoder. Under the corrected
