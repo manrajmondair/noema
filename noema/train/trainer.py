@@ -73,7 +73,6 @@ def train(model, loader, cfg, device=None, on_log=None, val_ds=None):
                 target_counts=batch.get("target_counts"),
                 target_unit_ids=batch.get("target_unit_ids"),
                 session=batch.get("session"),
-                context=batch.get("context"),
             )
             loss = (cfg.w_rate * out["loss_rate"]
                     + cfg.w_jepa * out["loss_jepa"]

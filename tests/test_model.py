@@ -14,7 +14,7 @@ def test_shapes():
 
 
 def test_rollout_shape():
-    from noema.sim.rollout import imagine
+    from noema.sim import imagine
 
     counts, unit_ids, _ = synthetic_batch(batch=2, steps=16, units=25, behavior_dim=0)
     model = Noema(dim=64, enc_depth=2, wm_depth=1, heads=4, max_units=32)

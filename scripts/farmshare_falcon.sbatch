@@ -24,7 +24,7 @@ set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 source "$HOME/miniforge3/etc/profile.d/conda.sh" && conda activate noema-falcon
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-mkdir -p checkpoints logs
+mkdir -p checkpoints
 
 MODE="${MODE:-heldin}"
 COMMON=(--data "${DATA:-data/000954}" --task "${TASK:-h1}"

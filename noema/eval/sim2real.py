@@ -10,7 +10,6 @@ import torch
 
 from ..data.dataset import SpikeWindows
 from ..sim import imagine
-from .baselines import ridge_velocity
 
 
 @torch.no_grad()
@@ -51,13 +50,3 @@ def imagine_windows(model, unit_ids, seeds, horizon, labels=None, samples=1,
     return SpikeWindows(counts, behavior=None if behavior is None else behavior.repeat(samples, 1, 1))
 
 
-def decoder_in_imagination(world_model, unit_ids, seed_ds, real_val_ds,
-                           episodes=128, horizon=20, device=None):
-    seeds = seed_ds.heldin[:episodes]
-    seed_len = seeds.size(1) // 2
-    actions = None
-    if seed_ds.actions is not None:  # action-conditioned systems get a random plan to follow
-        actions = torch.randn(seeds.size(0), seed_len + horizon, seed_ds.actions.size(-1))
-    imagined = imagine_windows(world_model, unit_ids, seeds[:, :seed_len], horizon,
-                               actions=actions, device=device)
-    return {"sim2real_r2": ridge_velocity(imagined, real_val_ds)}

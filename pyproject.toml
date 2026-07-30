@@ -17,8 +17,5 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["noema*"]
 
-[tool.ruff]
-line-length = 100
-
 [tool.ruff.lint]
 ignore = ["E731"]  # local lambda helpers are idiomatic and clear

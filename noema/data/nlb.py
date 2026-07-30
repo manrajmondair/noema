@@ -13,10 +13,6 @@ import torch
 
 from .dataset import SpikeWindows
 
-# NLB dataset name -> Dandi id, for reference/tooling.
-DANDISETS = {"mc_maze": "000128", "mc_rtt": "000129", "area2_bump": "000127",
-             "dmfc_rsg": "000130", "mc_maze_large": "000138", "mc_maze_medium": "000139",
-             "mc_maze_small": "000140"}
 
 
 def _find_nwb(path):

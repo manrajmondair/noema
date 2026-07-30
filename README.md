@@ -1,134 +1,112 @@
 # Noema
 
-**A world model of neural population dynamics.**
+A world model of neural population dynamics. Rather than mapping activity to intent, it models the
+population as a dynamical system and predicts its own future, `z_{t+1} ~ P(· | z_t, action_t)`, over
+a learned latent state — so that decoding, calibration and simulation fall out of one objective.
 
-Most neural decoders treat the brain as a signal to classify: activity in, intent out. Noema
-instead models the population as a dynamical system and learns to predict its own future,
+**Half of that held.** The decoding half is competitive on a public benchmark. The forward-prediction
+half was tested against trivial baselines and does not stand. Both are below; the retraction is the
+more useful result.
 
-```
-z_{t+1} ~ P(· | z_t, action_t, context_t)
-```
+## NLB MC_Maze — co-smoothing bits/spike, test split
 
-over a learned latent state `z`. The aim was to make decoding, few-shot calibration, a closed-loop
-simulator, and a per-subject digital twin consequences of one objective rather than separate systems.
+| Method | co-bps | | Method | co-bps |
+|---|---:|---|---|---:|
+| GRAFT (ensemble) | 0.387 | | **Noema** | **0.367** |
+| STNDT (ensemble) | 0.386 | | AutoLFADS | 0.336 |
+| S5 | 0.382 | | MINT | 0.330 |
+| STNDT (single) | 0.369 | | NDT | 0.323 |
 
-That premise was tested and it does not hold. The decoding half works — the co-smoothing result
-below is competitive on a public benchmark. The forward-prediction half does not: measured against
-a trivial baseline the rollout is worse than knowing each neuron's average firing rate, and the
-simulator and digital-twin claims rest on it. Both results are below, with the measurements that
-retired the earlier, better-looking numbers.
+Scored with `nlb_tools` against the public test labels — the leaderboard's metric and split.
 
-## Results
+This is an ensemble of 21 members plus MINT; the best single model is 0.333, so both "single" rows
+above beat the whole ensemble with one model. The remaining gap is information-bound, not
+architectural: 0.367 is 94% of the 0.392 known-condition oracle, and neither reweighting members,
+nor a single model 0.010 stronger, nor a dedicated condition classifier moves it. What is left is
+`H(condition | held-in)` — see [`scripts/nlb_submission.md`](scripts/nlb_submission.md).
 
-The co-bps and FALCON figures come from the datasets' official scorers on real recordings. co-bps
-is measured against the public NLB test labels with `nlb_tools`, the same metric and split as the
-leaderboard. The forward-prediction figures below are reported against a trivial baseline,
-which is what retired the earlier ones.
+## FALCON H1 — velocity decoding
 
-**NLB MC_Maze, co-smoothing bits/spike (test split)**
-
-| Method | co-bps |
+| Split | R² |
 |---|---:|
-| GRAFT (ensemble) | 0.387 |
-| STNDT (ensemble) | 0.386 |
-| S5 | 0.382 |
-| STNDT (single) | 0.369 |
-| **Noema** | **0.367** |
-| AutoLFADS | 0.336 |
-| MINT | 0.330 |
-| NDT | 0.323 |
+| Held-in (minival), window 50 / 75 | 0.545 / 0.603 |
+| Cross-session, zero-shot | ~0.6 |
 
-Noema clears the long-standing strong baselines (AutoLFADS, MINT, NDT) and lands within 0.02
-co-bps of the best ensembles. The gap to the top is information-bound rather than architectural.
-0.367 is 94% of the 0.392 known-condition oracle, the score from handing each trial its
-true-condition PSTH, which no published method exceeds. Three measurements pin the residual to
-intrinsic ambiguity rather than model capacity: reweighting the ensemble members gains nothing
-(they are already independent noise around a shared estimate), a single model 0.010 stronger moves
-the ensemble by 0.0002, and a dedicated condition classifier is no sharper than the existing
-consensus. What is left is `H(condition | held-in)`, the trials whose held-in neurons genuinely do
-not determine the reach. The derivation and the full map of tested levers are in
-[`scripts/nlb_submission.md`](scripts/nlb_submission.md).
+Three seeds each, official evaluator. Held-in is a **development split** and not
+leaderboard-comparable: every `held-in-minival` recording is a byte-identical prefix of its
+`held-in-calib` counterpart, so a run that fits on calibration and scores minival scores its own
+training data. `disjoint_calib` excises the overlap; an earlier 0.87 was measured without it. The
+configuration sweep also selected on this split. Cross-session is session-disjoint and shares no
+non-zero row; nine adaptation levers in `eval/falcon_transfer.py` fail to close the drift gap.
 
-**Forward model and transfer** (real recordings)
+## Forward prediction — does not hold
 
-| Task | Metric | Result |
-|---|---|---:|
-| FALCON H1 velocity, held-in | R² (official evaluator) | 0.60 |
-| FALCON H1 velocity, cross-session zero-shot | R² | ~0.6 |
-| World-model rollout, real H1 | forward bits/spike | negative |
+Rolled open-loop from a seed window, against a strictly causal flat forecast (the seed window's
+mean, held constant across the horizon):
 
-Held-in velocity is 0.545 ± 0.006 at window 50 and 0.603 ± 0.003 at window 75, three seeds each,
-with `disjoint_calib` applied. In this dandiset every `held-in-minival` recording is a
-byte-identical prefix of the matching `held-in-calib` recording, so a run that fits on calibration
-and scores minival is scoring its own training data; an earlier 0.87 measured exactly that. The ±
-is dispersion across the 13 minival sessions, and minival is a public dev split that the
-configuration sweep selected on — the leaderboard number needs an EvalAI submission.
+| | model | flat forecast |
+|---|---:|---:|
+| Per-neuron correlation across the recording | 0.195 – 0.264 | 0.232 – 0.272 |
+| Population rate correlation | 0.374 – 0.527 | 0.452 – 0.511 |
+| Forward bits/spike | **−0.17** | 0 by construction |
 
-**The forward-prediction claim does not hold.** It was reported as raw cross-neuron correlation,
-which has a floor set by the recording rather than the model: for Poisson counts with per-channel
-rates λ a flat forecast scores √(Var(λ)/(Var(λ)+E[λ])), 0.47 here and 0.02 to 0.93 across datasets.
-Against a strictly causal flat forecast — the seed window's mean, held constant — the rollout loses
-at every horizon on all three correlation forms, and `fp-bps`, whose null *is* the per-neuron mean
-rate, is negative: worse than knowing nothing but each neuron's average. Contamination was not the
-cause; training on the overlap moves it by less than seed noise. The multi-step objective is a real
-relative effect and closes part of the distance to a constant without reaching it.
+On correlation the rollout is level with a forecast containing no dynamics — ahead at the first
+step, behind by the tenth, within ±0.04 throughout. `fp-bps` decides it: its null *is* the
+per-neuron mean rate, so a constant scores exactly zero and the rollout is worse than knowing
+nothing but each neuron's average firing.
 
-Cross-session zero-shot ~0.6 is unaffected — those splits are session-disjoint and share no
-non-zero row. Nine adaptation levers are characterized in the eval code, none of them closing the
-drift gap.
+An earlier 0.45 is retired rather than corrected. It was raw cross-neuron correlation, whose floor
+is a property of the recording — for Poisson counts with rates λ a flat forecast scores
+√(Var(λ)/(Var(λ)+E[λ])), 0.47 here and 0.02–0.93 across datasets. Reading the multi-step objective
+as "drift-resistant, flat across the horizon" was that collapse, not a strength. Contamination was
+not the cause: training on the overlap moves these by less than seed noise. The multi-step objective
+is a real relative effect — it is why the model reaches parity with a constant rather than losing.
 
-## Architecture
-
-```
- spikes ─▶ tokenizer ─▶ encoder ─▶  z_t  ─▶ world model ─▶ ẑ_{t+1}
-           per-unit     temporal /          action-cond.   JEPA + forecast
-           embeddings   state-space         causal         + rollout loss
-                                       │
-                                       ├─▶ Poisson rate head  → co-bps
-                                       └─▶ velocity decoder    → kinematics
-```
-
-- **Tokenizer.** Every recorded unit owns a learned embedding, so a population becomes one token
-  per time bin regardless of channel count or electrode layout. Permutation-invariant and portable
-  across sessions and subjects, which is what makes cross-subject pretraining possible.
-- **Encoder.** Pluggable: a rotary temporal transformer, or a bidirectional diagonal state-space
-  model (S5/LRU-style). The state-space encoder with a learnable per-mode timescale
-  (`--ssm --ssm-dt`) is the strongest single model, 0.343 on validation.
-- **World model.** An action-conditioned causal predictor trained to forecast the next latent
-  against an EMA target encoder, with a scheduled-sampling rollout loss for drift-resistant
-  open-loop simulation.
-- **Heads.** A Poisson rate readout for co-smoothing and a velocity decoder for kinematics.
-- **Ensemble.** Rate-space greedy (Caruana) selection over diverse members plus MINT, a non-NN
-  condition-averaged trajectory library. Selection and smoothing are tuned on a train-carved split;
-  the reported split is left untouched.
-
-## Layout
-
-```
-noema/
-  models/   tokenizer, encoder, state-space encoder, world model, heads, session adversary
-  data/     dataset, synthetic systems, multi-session pretraining
-  train/    trainer, few-shot adaptation, CLI
-  sim/      imagined rollouts
-  eval/     metrics, baselines, NLB, MINT, ensemble, submission, score_test, FALCON, streaming
-tests/      unit and integration checks
-```
-
-## Reproduce
+## Install and reproduce
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]" && pytest -q
 
-scripts/nlb.sh mc_maze 000128                             # download and train a single model
-python -m noema.eval.score_test --submission submission.h5  # official co-bps vs public test labels
+scripts/nlb.sh mc_maze 000128                                # download and train one model
+python -m noema.eval.score_test --submission submission.h5   # co-bps vs public test labels
+scripts/falcon_data.sh                                       # FALCON H1 (~98 MB)
+python -m noema.eval.falcon_run --data data/000954           # held-in velocity R²
+python -m noema.eval.falcon_worldmodel --fidelity            # rollout vs the flat floor
 ```
 
-Training is GPU-first but device-agnostic (CUDA, MPS, CPU). Ensemble regeneration and the exact
-member pool are documented in [`scripts/nlb_submission.md`](scripts/nlb_submission.md).
+Device-agnostic (CUDA, MPS, CPU). Run `scripts/gpu_smoke.py` on new hardware first: it checks fp32
+precision, state-space kernel agreement against a sequential reference, and attention head
+dimensions.
 
-## Reporting
+## Architecture
 
-co-bps is the sequestered-test metric computed against the public labels; FALCON figures come from
-the official evaluator on the sanctioned splits. Any validation or minival number elsewhere in the
-repo is a development figure and is labeled as one.
+```
+spikes ─▶ tokenizer ─▶ encoder ─▶ z_t ─▶ world model ─▶ ẑ_{t+1}
+          per-unit     temporal /       action-cond.    JEPA + forecast
+          embeddings   state-space      causal          + rollout loss
+                                    │
+                                    ├─▶ Poisson rate head ─▶ co-bps
+                                    └─▶ velocity decoder  ─▶ kinematics
+```
+
+One learned embedding per unit makes any channel count or layout a single token per bin,
+permutation-invariant and portable across sessions. The encoder is a rotary temporal transformer or
+a bidirectional diagonal state-space model (S5/LRU) — the latter is the project's one architecture
+win, 0.333 against 0.273. The ensemble is rate-space greedy selection over diverse members plus
+MINT, a non-neural trajectory library, tuned on a train-carved split with the reported split scored
+once.
+
+## Layout
+
+```
+noema/  models/  tokenizer, encoder, state-space encoder, world model, heads
+        data/    dataset, synthetic systems, NLB loader
+        train/   trainer, few-shot adaptation, CLI
+        eval/    metrics, baselines, NLB, MINT, ensemble, submission, FALCON, stimulation
+        sim.py   open-loop rollout
+tests/           unit and integration checks
+scripts/         data fetch, cluster jobs, submission notes
+```
+
+MIT — see [LICENSE](LICENSE).

@@ -19,6 +19,7 @@ from .. import Noema
 from ..data.dataset import SpikeWindows
 from ..train import TrainConfig, train
 from ..utils import default_device
+from .metrics import r2_weighted
 from .falcon import load_sessions
 from .streaming import StreamingDecoder
 
@@ -63,8 +64,7 @@ def _coral_transform(train_z, unseen_z, device, eps=1e-3, shrink=1.0):
 @torch.no_grad()
 def _score(model, neural, kin, mask, window, vmean, vstd, device, latent_transform=None):
     """Stream one bin at a time; variance-weighted R^2 on eval-mask timesteps."""
-    from sklearn.metrics import r2_score
-
+    
     stream = StreamingDecoder(model, torch.arange(neural.shape[1]), window, device,
                               latent_transform=latent_transform)
     stream.reset(1)
@@ -72,7 +72,7 @@ def _score(model, neural, kin, mask, window, vmean, vstd, device, latent_transfo
     for t in range(neural.shape[0]):
         pred[t] = stream.step(neural[t:t + 1])[0].cpu().numpy() * vstd + vmean
     m = mask.astype(bool) if mask is not None else np.ones(len(kin), bool)
-    return float(r2_score(kin[m], pred[m], multioutput="variance_weighted"))
+    return r2_weighted(torch.as_tensor(pred[m]), torch.as_tensor(kin[m]))
 
 
 def main():

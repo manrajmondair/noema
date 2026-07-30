@@ -18,7 +18,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from .. import Noema
 from ..data.dataset import SpikeWindows
-from ..sim.rollout import imagine
+from ..sim import imagine
 from ..train import TrainConfig, train
 from ..utils import default_device
 from .baselines import ridge_velocity
@@ -260,8 +260,6 @@ def main():
     p.add_argument("--reproduce-contaminated", action="store_true",
                    help="train on the un-excised overlap; for checking whether a "
                         "withdrawn figure reproduces, never for reporting")
-    p.add_argument("--train-files", default="", help="comma-separated NWB paths to train on, "
-                                                     "instead of every calibration session")
     args = p.parse_args()
 
     from falcon_challenge.config import FalconConfig, FalconTask
@@ -273,18 +271,7 @@ def main():
     minival = load_sessions(f"{args.data}/*held-in-minival/*.nwb", args.task)
     # minival is a byte-identical prefix of calib here; without this the rollout and
     # sim2real arms are all scored on bins the model trained on.
-    if args.train_files:
-        # An explicit file list, so a caller that also ships recordings can hold some
-        # back. Naming the training set in one place is what keeps a held-out recording
-        # from quietly being one the model read.
-        #
-        # The excision applies here too. This branch used to skip it while still scoring
-        # on minival, and the recordings the demo trained on were the full calib files —
-        # so roughly 45% of the evaluation windows came from bins the model had read.
-        named = [s for path in args.train_files.split(",") for s in load_sessions(path, args.task)]
-        overlapping = [m for m in minival if m[0] in {n[0] for n in named}]
-        calib = disjoint_calib(named, overlapping) if overlapping else named
-    elif args.reproduce_contaminated:
+    if args.reproduce_contaminated:
         # Deliberately trains on the overlap, to test whether a withdrawn figure can be
         # reproduced at all before it is described as wrong rather than unverified. Named
         # so it cannot be reached by accident and says what it does at the top of the log.

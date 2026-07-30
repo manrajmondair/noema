@@ -32,7 +32,6 @@ lightning_logs/
 runs/
 
 # Generated demo weights (parity artifact; noema.html inlines its own copy)
-demo/model.json
 
 # Deploy state and local secrets (any level)
 .vercel/
@@ -54,7 +53,6 @@ submission*.h5
 eval_data_test.h5
 
 # Generated demo asset bundle (rebuild with demo/build.py)
-demo/assets.json
 
 # The interactive demo is kept locally, not published.
 demo/

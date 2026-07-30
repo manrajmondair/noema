@@ -20,7 +20,7 @@ def _trialize(x, window):
 
 
 class SpikeWindows(Dataset):
-    def __init__(self, heldin, heldout=None, behavior=None, actions=None, context=None,
+    def __init__(self, heldin, heldout=None, behavior=None, actions=None,
                  window=None, unit_ids=None, session=None, behavior_stats=None):
         # (mean, std) used to standardize behavior, so metrics can recover raw kinematics.
         self.behavior_stats = behavior_stats
@@ -28,7 +28,6 @@ class SpikeWindows(Dataset):
         self.heldout = _trialize(_as_f32(heldout), window)
         self.behavior = _trialize(_as_f32(behavior), window)
         self.actions = _trialize(_as_f32(actions), window)
-        self.context = _trialize(_as_f32(context), window)
         self.session = session
         n_in = self.heldin.size(-1)
         n_out = self.heldout.size(-1) if self.heldout is not None else 0
@@ -48,8 +47,6 @@ class SpikeWindows(Dataset):
             item["behavior"] = self.behavior[i]
         if self.actions is not None:
             item["actions"] = self.actions[i]
-        if self.context is not None:
-            item["context"] = self.context[i]
         if self.session is not None:  # per-sample so concatenated sessions keep their ids
             item["session"] = torch.as_tensor(self.session, dtype=torch.long)
         return item

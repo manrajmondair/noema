@@ -10,7 +10,6 @@ import re
 import numpy as np
 import torch
 
-from ..data.dataset import SpikeWindows
 from .streaming import StreamingDecoder
 
 
@@ -74,14 +73,6 @@ def disjoint_calib(calib, minival):
                              "first {cut} bins would remove the wrong rows")
         trimmed.append((name, neural[cut:], kin[cut:], None if mask is None else mask[cut:]))
     return trimmed
-
-
-def load_falcon(path, task="h1", window=50):
-    from falcon_challenge.config import FalconTask
-    from falcon_challenge.dataloaders import load_nwb
-
-    neural, kinematics, _, _ = load_nwb(path, FalconTask[task])
-    return SpikeWindows(neural, behavior=kinematics, window=window)
 
 
 def make_decoder(model, task_config, window=50, batch_size=1):

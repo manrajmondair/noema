@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from .adversary import SessionAdversary
-from .coupling import SensoryEncoder
 from .encoder import SpatioTemporalEncoder, TemporalEncoder
 from .heads import AttentionPool, BehaviorHead, CrossReadout, FiLMReadout
 from .tokenizer import PopulationTokenizer
@@ -44,7 +43,7 @@ def contrastive_loss(pred, target, temp=0.1):
 
 class Noema(nn.Module):
     def __init__(self, dim=256, enc_depth=6, wm_depth=3, heads=8, max_units=8192,
-                 action_dim=0, behavior_dim=0, context_dim=0, sessions=0, mask_ratio=0.25,
+                 action_dim=0, behavior_dim=0, sessions=0, mask_ratio=0.25,
                  adv_weight=1.0, ema=0.996, spatial=False, neuron_mask_ratio=0.0, cross=False,
                  multistep=0, attn_pool=False, contrastive=False, contrastive_temp=0.1, ssm=False, ssm_state=128, hybrid=False,
                  ssm_dt=False, film=False, graft=False):
@@ -75,7 +74,6 @@ class Noema(nn.Module):
         # falls back to a mean when off. The teacher mirrors it so the JEPA target lives in
         # the same latent space the world model predicts.
         self.pooler = AttentionPool(dim, heads) if (spatial and attn_pool) else None
-        self.sensory = SensoryEncoder(context_dim, dim, max(2, wm_depth)) if context_dim else None
         self.adversary = SessionAdversary(dim, sessions, adv_weight) if sessions else None
         self.teacher = copy.deepcopy(self.encoder).requires_grad_(False)
         self.teacher_pooler = copy.deepcopy(self.pooler).requires_grad_(False) if self.pooler else None
@@ -147,7 +145,7 @@ class Noema(nn.Module):
         return self.tokenizer.decode(zs, target_unit_ids)
 
     def forward(self, counts, unit_ids, actions=None, behavior=None,
-                target_counts=None, target_unit_ids=None, session=None, context=None):
+                target_counts=None, target_unit_ids=None, session=None):
         # Coordinated dropout: hide a fraction of spikes and reconstruct only those,
         # which blocks the trivial copy solution and forces use of population structure.
         loss_mask, observed = None, counts
@@ -221,21 +219,12 @@ class Noema(nn.Module):
         if self.behavior is not None and behavior is not None:
             out["loss_behavior"] = F.mse_loss(self.behavior(z), behavior)
 
-        # Sensory coupling: predict the population's firing from the stimulus alone,
-        # read out by the shared per-unit decoder.
-        if self.sensory is not None and context is not None:
-            out["loss_sensory"] = poisson_nll(self.tokenizer.decode(self.sensory(context), unit_ids), counts)
 
         if self.adversary is not None and session is not None:
             out["loss_session"] = self.adversary(z, session)
         return out
 
     @torch.no_grad()
-    def predict_response(self, context, unit_ids):
-        """Firing rates a population would produce in response to a stimulus."""
-        self.eval()
-        return self.tokenizer.decode(self.sensory(context), unit_ids).exp()
-
     @torch.no_grad()
     def update_teacher(self):
         for online, target in zip(self.encoder.parameters(), self.teacher.parameters()):
